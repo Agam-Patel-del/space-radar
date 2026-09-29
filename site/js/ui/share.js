@@ -72,7 +72,7 @@ export function toast(line, ms = 2000) {
   if (typeof document === 'undefined') return null;
   if (!toastNode || !toastNode.isConnected) {
     toastNode = document.createElement('div');
-    toastNode.className = 'sr-toast';
+    toastNode.className = 'sr-toast sr-over-clean';
     toastNode.setAttribute('role', 'status');
     document.body.appendChild(toastNode);
   }
