@@ -34,7 +34,6 @@ import { createSceneNote } from './ui/scenenote.js';
 import { buildIndex, findMatches, LINK_MIN_SCORE } from './ui/search.js';
 import { createDensity } from './ui/density.js';
 import { createTrip } from './ui/trip.js';
-import { createTripFrame } from './ui/tripframe.js';
 import { createVeil } from './ui/veil.js';
 import { createAudio } from './audio/engine.js';
 import { createLoader } from './audio/load.js';
@@ -156,7 +155,7 @@ export async function boot({ setStatus } = {}) {
   // listening for `sr:layer` -- and a layer that landed before anybody was listening is a layer
   // the trip would then wait eight seconds for.
   // THE ONE BLACK (spec 0034 req 1): over the canvas and the labels, under every panel, the card
-  // and the trip's letterbox. A stage change in a trip goes through it; the reduced-motion
+  // and the trip's own bars. A stage change in a trip goes through it; the reduced-motion
   // cross-fade is it. Mounted on <body> beside the canvas, because the trip frame is a stacking
   // context of its own and anything inside it sits over the card.
   ctx.veil = createVeil(document.body, {
@@ -276,9 +275,20 @@ export async function boot({ setStatus } = {}) {
   const openSourcesFromHash = () => { if (location.hash === '#sources') shell.openSources(); };
   openSourcesFromHash();
   window.addEventListener('hashchange', openSourcesFromHash);
-  // The cinematic frame, after the shell and the mobile bar exist: it hides the sidebar and the
-  // rail, and it reads ctx.mobile to close a phone drawer that is standing open when a trip starts.
-  ctx.tripFrame = createTripFrame(ctx);
+  // The trip's frame (the intro, the toolbar, the top bar, the end), after the shell and the mobile
+  // bar exist: it seats its sheet in the sidebar, hides the rail and the pill, and reads ctx.mobile
+  // to close a phone drawer that is standing open when a trip starts. IMPORTED WHEN THE FIRST TRIP
+  // STARTS, not at boot (spec 0061 task 7): it is 50 kB a visitor who never takes a trip need not
+  // download, and the first visit was 160 bytes inside its budget before the frame was rebuilt.
+  // The frame paints the state it finds when it is made, so nothing a trip did while it loaded is
+  // lost; its keys work from then on (Escape before it lands is the card's, as it always was).
+  let framing = null;
+  const offFrame = ctx.trip.onChange((st) => {
+    if (framing || !st || st.phase === 'idle') return;
+    framing = import('./ui/tripframe.js')
+      .then((m) => { ctx.tripFrame = m.createTripFrame(ctx); offFrame(); })
+      .catch((e) => { framing = null; console.warn('the trip frame did not load', e); });
+  });
   // Names over the scene (spec 0026 req 5): the selection, its train, the nearest notable things.
   const labels = createLabels(ctx, document.getElementById('labels'));
   ctx.labels = labels;
