@@ -173,9 +173,34 @@ check(/public domain/.test(COPY.aurora.credit) && /NOAA/.test(COPY.aurora.credit
 
 // ---- 9. the Kp line ------------------------------------------------------------------------------------
 check(A.auroraRightNow(4.67, out.summary) === null && A.auroraRightNow(NaN) === null, 'nothing below Kp 5');
-check(A.auroraRightNow(5.33, { north: { edgeLat: 64 }, south: { edgeLat: -62 } }) === 'Aurora likely at high latitudes tonight (Kp 5.3).', 'a G1 storm, the oval where it usually is');
-check(A.auroraRightNow(7, { north: { edgeLat: 50 }, south: { edgeLat: -54 } }).includes('as far from the poles as 50°'), 'a big storm says how far south');
-check(A.auroraRightNow(6, null) === 'Aurora likely at high latitudes tonight (Kp 6).', 'no forecast held: the plain line');
+const g1 = A.auroraRightNow(5.33, { north: { edgeLat: 64 }, south: { edgeLat: -62 } });
+check(g1 && g1.text === 'Aurora likely near the poles' && g1.value === 'Kp 5.3', `a G1 storm, the oval where it usually is: words left, Kp in the value column (${JSON.stringify(g1)})`);
+const big = A.auroraRightNow(7, { north: { edgeLat: 50 }, south: { edgeLat: -54 } });
+check(big && big.text === 'Aurora likely as far as 50° latitude' && big.value === 'Kp 7', `a big storm says how far from the poles (${JSON.stringify(big)})`);
+const plain = A.auroraRightNow(6, null);
+check(plain && plain.text === 'Aurora likely near the poles' && plain.value === 'Kp 6', 'no forecast held: the plain line');
+// docs/ui-guide.md 3.4 and 4: one line at the sidebar's width, no sentence on the value side.
+for (const l of [g1, big, plain]) check(l.text.length <= 40 && !/[.!?]$/.test(l.text) && l.value.length <= 8, `a Right-now line, not a sentence: "${l.text}" / "${l.value}"`);
+
+// ---- 9b. Show me: which pole, and from where ----------------------------------------------------------
+{
+  const H = A.auroraHemisphere;
+  const both = { north: { cells: 400 }, south: { cells: 380 } };
+  check(H({ observerLatDeg: -41, summary: both }) === 'south' && H({ observerLatDeg: 52, summary: both }) === 'north', 'with a place known, its own hemisphere');
+  check(H({ observerLatDeg: 52, summary: { north: { cells: 0 }, south: { cells: 300 } } }) === 'south', 'never a pole whose oval the forecast left empty');
+  check(H({ sunDotNorth: -0.3 }) === 'north' && H({ sunDotNorth: 0.3 }) === 'south', 'with no place, the pole turned away from the Sun');
+  const north = [0, 1, 0];
+  const sun = [1, 0.2, 0].map((x, _, a) => x / Math.hypot(...a));
+  const d = A.nightPoleDirection(north, sun, 'north');
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  check(Math.abs(Math.hypot(...d) - 1) < 1e-9, 'the view direction is a unit vector');
+  check(Math.abs(Math.acos(dot(d, north)) - A.SHOW_ME_TILT) < 1e-9, `${(A.SHOW_ME_TILT * 180 / Math.PI).toFixed(0)} degrees from the pole`);
+  check(d[0] < 0 && Math.abs(d[2]) < 1e-9, 'and tipped toward local midnight, away from the Sun');
+  const s = A.nightPoleDirection(north, sun, 'south');
+  check(s[1] < 0 && s[0] < 0, 'the south pole\'s view is from below, on the night side too');
+  const noon = A.nightPoleDirection(north, [0, 1, 0], 'north');
+  check(Number.isFinite(noon[0]) && Math.abs(Math.hypot(...noon) - 1) < 1e-9, 'a pole in daylight all round still gets a view, not NaN');
+}
 
 // ---- 10. the shader and the boot path --------------------------------------------------------------------
 const F = A.AURORA_FRAG;
@@ -193,7 +218,15 @@ const auroraSrc = readFileSync(join(JS, 'scene/aurora.js'), 'utf8');
 check(/AdditiveBlending/.test(auroraSrc) && /depthWrite: false/.test(auroraSrc), 'additive, no depth write');
 check(!/EffectComposer|UnrealBloomPass|RenderPass/.test(auroraSrc), 'no bloom, no post pass');
 const main = readFileSync(join(JS, 'main.js'), 'utf8');
-check(/addEventListener\('sr:layers-ready', \(\) => ctx\.aurora\.start\(\)/.test(main), 'main.js starts the aurora once the layers have landed, never from boot');
+// Internal #192 item 6: off the first visit. No static import of the module (so it is not in the
+// modulepreload block either), a dynamic one inside the sr:layers-ready handler, and start() told how
+// long after the event it was called, so the first look keeps its START_DELAY_MS.
+check(!/^import[^;]*from '\.\/scene\/aurora\.js'/m.test(main), 'main.js has no static import of scene/aurora.js');
+check(/function loadAuroraLater\(\) \{[\s\S]{0,400}import\('\.\/scene\/aurora\.js'\)[\s\S]{0,800}\.start\(\{ elapsedMs:/.test(main)
+  && /addEventListener\('sr:layers-ready', loadAuroraLater, \{ once: true \}\)/.test(main), 'main.js imports the aurora once the layers have landed and starts it from that moment, never from boot');
+const html = readFileSync(join(JS, '../index.html'), 'utf8');
+check(!/modulepreload" href="js\/(scene\/aurora|data\/ovation)\.js"/.test(html), 'and index.html does not preload it');
+check(/function auroraStandIn\(/.test(main) && /ctx\.aurora = auroraStandIn\(/.test(main), 'until it loads, ctx.aurora is a stand-in the card and the Sources sheet can ask');
 check(/ctx\.aurora\.tick\(t, \{[\s\S]{0,200}latched: latch\.latched[\s\S]{0,120}reducedMotion/.test(main), 'the frame passes the latch and reduced motion to the aurora');
 const T0 = A.TIER_STEPS[0];
 check(T0.maxSteps <= 8 && A.TIER_STEPS[2].maxSteps >= A.TIER_STEPS[1].maxSteps && A.TIER_STEPS.every((c) => c.folds), 'T0 and the latch: fewer steps; the folds on every tier (without them the oval is a flat plate)');
