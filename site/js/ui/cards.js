@@ -2283,7 +2283,18 @@ function actionButton(action, label, title, iconName, onClick, primary) {
   b.title = title;
   b.dataset.action = action;
   b.appendChild(icon(iconName));
-  b.appendChild(el('span', 'sr-act__label', label));
+  // A one-word label for a narrow phone where the action has one (copy: `<action>Short`); CSS
+  // shows one of the two, and the button's name is the full one either way.
+  const short = COPY.card.actions[`${action}Short`];
+  if (short && short !== label) {
+    b.setAttribute('aria-label', label);
+    b.appendChild(el('span', 'sr-act__label sr-act__label--long', label));
+    const s = el('span', 'sr-act__label sr-act__label--short', short);
+    s.setAttribute('aria-hidden', 'true');
+    b.appendChild(s);
+  } else {
+    b.appendChild(el('span', 'sr-act__label', label));
+  }
   b.addEventListener('click', onClick);
   return b;
 }
@@ -2657,7 +2668,7 @@ function leadNote(lead) {
  * not, so the corner it was asked to sit in was empty whenever no card was showing. It cannot read
  * the card with a CSS sibling selector either: the mark is appended at boot and the card host is
  * built lazily on the first showCard(), so the card is always AFTER it in the document. A class on
- * <html> is how ui/mobile.js and ui/tripframe.js already say the same kind of thing.
+ * <html> is how ui/shell.js and ui/tripframe.js already say the same kind of thing.
  */
 function markCardOpen(open) {
   if (typeof document === 'undefined' || !document.documentElement) return;
