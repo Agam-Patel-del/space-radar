@@ -46,6 +46,7 @@ import { createLod } from './scene/lod.js';
 import { createStars3d, NAMED_STARS } from './scene/stars3d.js';
 import { createGalaxy } from './scene/galaxy.js';
 import { createDsoGlow } from './scene/dsoglow.js';
+import { createExposure } from './scene/exposure.js';
 import { isLadderStage, isSystemStage } from './scene/stage.js';
 import { createSystems } from './scene/systems.js';
 import { SUN_INERTIAL, STAGES } from './scene/stage.js';
@@ -173,9 +174,56 @@ export async function boot({ setStatus } = {}) {
   // Deep-sky objects as big as they are, when that is bigger than their dot (scene/dsoglow.js).
   const dsoGlow = createDsoGlow(scene);
   ctx.dsoGlow = dsoGlow;
-  window.addEventListener('sr:layer', (e) => { if (e.detail && e.detail.id === 'deep-sky') dsoGlow.setRecords(ctx.recordsFor('deep-sky')); });
+  window.addEventListener('sr:layer', (e) => {
+    if (!e.detail || e.detail.id !== 'deep-sky') return;
+    dsoGlow.setRecords(ctx.recordsFor('deep-sky'));
+    if (ctx.nebulae) ctx.nebulae.setRecords(ctx.recordsFor('deep-sky'));
+  });
+  // THE SHUTTER (spec 0067, scene/exposure.js): Eye, Camera or Deep, remembered. The Milky Way wears
+  // it from the first frame; the photographs of the nebulae (scene/nebulae.js) wear it when they
+  // exist, which on a first visit they do not: the module and its pictures are fetched on a rung
+  // of the ladder, when a deep-sky object is selected, or when the visitor moves the shutter.
+  const exposure = createExposure();
+  ctx.exposure = exposure;
+  starfield.setExposure(exposure.look().milkyWay);
+  let skyStrength = 1;
+  let nebulaeImport = null;
+  ctx.wantNebulae = () => {
+    if (nebulaeImport) return nebulaeImport;
+    nebulaeImport = import('./scene/nebulae.js').then((m) => {
+      const nebulae = m.createNebulae(scene, {
+        skyGroup: starfield.group,
+        look: exposure.look(),
+        saveData: typeof navigator !== 'undefined' && shouldSaveData(navigator.connection),
+        onPicture: () => dsoGlow.setPictured(nebulae.loaded()),
+      });
+      nebulae.setSkyOpacity(skyStrength);
+      nebulae.setSkyVisible(!(ctx.latch && ctx.latch.latched));
+      nebulae.setRecords(ctx.recordsFor('deep-sky'));
+      const s = ctx.selected();
+      nebulae.want(s ? s.id : null);
+      ctx.nebulae = nebulae;
+      return nebulae;
+    }).catch((e) => { console.warn('the nebula pictures did not load', e); nebulaeImport = null; return null; });
+    return nebulaeImport;
+  };
+  exposure.onChange((mode, look, byVisitor) => {
+    starfield.setExposure(look.milkyWay);
+    if (ctx.nebulae) ctx.nebulae.setExposure(look);
+    else if (byVisitor) ctx.wantNebulae();
+    window.dispatchEvent(new CustomEvent('sr:exposure', { detail: { mode } }));
+  });
+  window.addEventListener('sr:select', (e) => {
+    const record = e && e.detail;
+    if (record && record.klass === 'dso') ctx.wantNebulae().then((n) => { if (n) n.want(record.id); });
+    else if (ctx.nebulae) ctx.nebulae.want(null);
+  });
   const lod = createLod({
-    'sky-panorama': (k) => starfield.setSkyOpacity && starfield.setSkyOpacity(k),
+    'sky-panorama': (k) => {
+      skyStrength = k;
+      if (starfield.setSkyOpacity) starfield.setSkyOpacity(k);
+      if (ctx.nebulae) ctx.nebulae.setSkyOpacity(k);
+    },
     'stars-3d': (k) => stars3d.setOpacity(k),
     'galaxy-model': (k) => galaxy.setOpacity(k),
   });
@@ -186,6 +234,8 @@ export async function boot({ setStatus } = {}) {
   window.addEventListener('sr:stage', (e) => {
     stars3d.rebuild(); galaxy.rebuild(); dsoGlow.rebuild();
     const id = e && e.detail ? e.detail.worldId : stage.worldId;
+    if (ctx.nebulae) ctx.nebulae.rebuild();
+    else if (isLadderStage(id)) ctx.wantNebulae();
     if (isSystemStage(id)) systems.enter(id);
     else systems.leave();
   });
@@ -570,7 +620,13 @@ export async function boot({ setStatus } = {}) {
     if (pos) {
       const distance = arrivalDistance(record, pos);
       const limb = limbPose(record, pos, distance, on);
-      cameraRig.flyTo({ targetScene: pos, distance: limb ? limb.distance : distance, tilt: limb ? limb.tilt : undefined, ms });
+      // A deep-sky object is approached FROM THE SUN'S SIDE, looking out along the line we see it
+      // on (spec 0067). The rig's default arrival is from beyond the subject, looking back at its
+      // world, which is right for a satellite and here would show a nebula's photograph from
+      // behind, mirrored -- and scene/nebulae.js rightly draws no picture off the line it was
+      // taken along. Pi less a few degrees: the same framing, turned around.
+      const fromHere = record.klass === 'dso' && isLadderStage(stage.worldId) ? Math.PI - 0.1 : undefined;
+      cameraRig.flyTo({ targetScene: pos, distance: limb ? limb.distance : distance, tilt: limb ? limb.tilt : fromHere, ms });
     }
     // Following something standing on the Moon is following the Moon, which crosses its own
     // radius in about half an hour, so its centre is re-taught with every tick of the target.
@@ -1142,6 +1198,7 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
   function degrade() {
     if (ctx.renderer && ctx.rendererApi && ctx.rendererApi.setQuality) ctx.rendererApi.setQuality('low');
     if (starfield && starfield.setDetail) starfield.setDetail('low');
+    if (ctx.nebulae) ctx.nebulae.setSkyVisible(false);
     // Spec 0054: earthshine goes off with the latch (scene/worlds.js setLatched).
     if (worlds && worlds.setLatched) worlds.setLatched(true);
     // The tier falls with the latch and only with it: every world back on its boot map.
@@ -1259,6 +1316,11 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     }
     if (ctx.galaxy) ctx.galaxy.update(ctx.camera, ctx.renderer);
     if (ctx.dsoGlow) ctx.dsoGlow.update(ctx.camera, ctx.renderer, ctx.isLayerDrawable(LAYERS.find((l) => l.id === 'deep-sky')));
+    if (ctx.nebulae) {
+      ctx.nebulae.update(ctx.camera, ctx.renderer, ctx.isLayerOn('deep-sky'), ctx.isLayerDrawable(LAYERS.find((l) => l.id === 'deep-sky')));
+      // Andromeda's photograph and her stand-in model never draw over each other (scene/galaxy.js).
+      if (ctx.galaxy) ctx.galaxy.setAndromedaShare(1 - ctx.nebulae.drawn('dso-m31'));
+    }
     if (ctx.skyView.active) ctx.skyView.update(t);
     render();
     // After render(), because render() is what brings the camera's matrices up to this frame: placed
