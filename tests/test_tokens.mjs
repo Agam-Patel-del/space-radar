@@ -10,7 +10,7 @@
 //   node tests/test_tokens.mjs
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const problems = [];
@@ -76,7 +76,7 @@ const DESIGN_TOKENS = [
   '--sr-line', '--sr-line-strong', '--sr-edge-lit', '--sr-edge-glow', '--sr-shadow',
   '--sr-radius', '--sr-radius-sm', '--sr-radius-pill', '--sr-bracket', '--sr-bracket-w',
   '--sp-1', '--sp-2', '--sp-3', '--sp-4', '--sp-5', '--sp-6', '--sr-pad', '--sr-header-h',
-  '--sr-font', '--sr-font-hud', '--sr-font-mono',
+  '--sr-font', '--sr-font-hud', '--sr-font-mono', '--sr-font-serif',
   '--sr-ease', '--sr-ease-in', '--sr-fast', '--sr-mid', '--sr-slow',
   // the old names, kept as aliases for one release
   '--sr-panel', '--font',
@@ -147,6 +147,54 @@ if (glass && thin && solid && text && dim && space) {
   if (faint) table.push(`--sr-text-faint on space: ${ratio(faint, space).toFixed(2)} (rules and ticks only)`);
 } else {
   problems.push('the glass, text or space tokens are not in a form this test can read (rgba() and #rrggbb)');
+}
+
+// --- 2b. the guide's contrast table, complete (docs/ui-guide.md section 2.1 and 7; 0061 task 5) --
+// What section 2 holds for text and text-dim on glass, held for every role the guide gives a
+// number: text on both grounds and on the stronger glass, the accent and the state colours as
+// marks (3:1, SC 1.4.11) and as text where they are text, ink on an ember fill, the selected row's
+// wash, and every class colour as a swatch on glass over a cloud and on bare space.
+if (glass && text && dim && space) {
+  const onW = over(glass, WHITE);
+  const onK = over(glass, space);
+  const strong = rgba(token('--sr-glass-strong') || '');
+  const need = (name, fg, bg, floor, where) => {
+    if (!fg || !bg) { problems.push(`${name} is not a colour this test can read`); return; }
+    const r = ratio(fg, bg);
+    check(r >= floor, `${name} ${where} is ${r.toFixed(2)}:1, under ${floor}:1`);
+  };
+  for (const [name, fg] of [['--sr-text', text], ['--sr-text-dim', dim]]) {
+    need(name, fg, onW, 4.5, 'on glass over a white cloud');
+    need(name, fg, onK, 4.5, 'on glass over space');
+    if (strong) need(name, fg, over(strong, WHITE), 4.5, 'on the strong glass over a white cloud');
+  }
+  check(!!strong && strong.a >= glass.a && solid.a >= strong.a, 'the glasses are ordered: glass, then glass-strong, then the solid fallback, none lighter than the one before');
+  const soft = rgba(token('--sr-text-soft') || '');
+  if (soft) {
+    need('--sr-text-soft', over(soft, onW), onW, 4.5, 'on glass over a white cloud');
+    check(soft.a >= 0.62, `--sr-text-soft is white at ${soft.a}; no text alpha under 0.62`);
+  }
+  // The accent: 3:1 as a mark, and it is text too (the countdown, a text action, the matched letters).
+  const ember = hex(token('--sr-ember'));
+  need('--sr-ember', ember, onW, 4.5, 'on glass over a white cloud');
+  need('--sr-ember', ember, onK, 4.5, 'on glass over space');
+  need('--sr-ember-light', hex(token('--sr-ember-light')), onW, 4.5, 'on glass over a white cloud');
+  need('--sr-ink on --sr-ember', hex(token('--sr-ink')), ember, 4.5, '(the primary button)');
+  // The selected row: text on the ember wash over glass over a cloud.
+  const emberSoft = rgba(token('--sr-ember-soft') || '');
+  if (emberSoft) need('--sr-text on --sr-ember-soft', text, over(emberSoft, onW), 4.5, 'over glass over a white cloud');
+  // The status dot's colours and "off": graphics, with their words beside them.
+  for (const name of ['--sr-ok', '--sr-stale', '--sr-unread']) need(name, hex(token(name)), onW, 3, 'as a dot on glass over a white cloud');
+  // The class colours, as the swatches in What to show and the search: a 10 px dot beside a name.
+  const CLASSES = ['station', 'satellite', 'debris', 'rocket', 'probe', 'telescope', 'asteroid', 'comet', 'site', 'world', 'star', 'exoplanet', 'dso', 'exotic', 'storm', 'unknown'];
+  let lowest = Infinity;
+  for (const c of CLASSES) {
+    const fg = hex(token(`--sr-${c}`));
+    need(`--sr-${c}`, fg, onW, 3, 'as a swatch on glass over a white cloud');
+    need(`--sr-${c}`, fg, space, 3, 'as a dot on bare space');
+    if (fg) lowest = Math.min(lowest, ratio(fg, onW));
+  }
+  table.push(`ember on glass over #fff: ${ratio(ember, onW).toFixed(2)}; the faintest class swatch there: ${lowest.toFixed(2)}`);
 }
 
 // --- 3. no third grey for text ------------------------------------------------------------------
@@ -249,13 +297,62 @@ check(all.some((r) => /prefers-reduced-motion: reduce/.test(r.at) && /\.sr-float
 check(token('--sr-fast') === '140ms' && token('--sr-mid') === '220ms' && token('--sr-slow') === '320ms', 'motion is 140 / 220 / 320 ms');
 check(!/@keyframes\s+[\w-]*(pulse|bounce|glow)/i.test(FILES.map((f) => readFileSync(join(ROOT, f), 'utf8')).join('\n')), 'no bounce and no glow pulse');
 
-// --- 10. faces: exactly the three the amendment names, self-hosted; never Bricolage --------------
+// --- 9b. motion from the tokens (docs/ui-guide.md section 2.5 and 7; spec 0061 req 12) ----------
+// Every duration in a transition or an animation is --sr-fast, --sr-mid or --sr-slow, and every
+// curve --sr-ease, --sr-ease-in or linear. A literal is allowed in exactly two places: 120 ms inside
+// `prefers-reduced-motion` (the fade), and scene motion, which keeps its own constants
+// (docs/design-language.md): the boot veil and its one waiting mark in site.css, and a trip
+// subject's label settling over the scene (ui/labels.js EMPHASIS_MS, held by tests/test_labels.mjs).
+const SCENE_MOTION = new Set(['.boot', '.boot-mark::after', '#labels .label.is-subject .label__text', '#labels .label.is-dimmed']);
+const MOTION_PROPS = new Set(['transition', 'transition-duration', 'transition-delay', 'transition-timing-function', 'animation', 'animation-duration', 'animation-delay', 'animation-timing-function']);
+for (const r of all) {
+  if (r.selector.split(',').every((x) => SCENE_MOTION.has(x.trim()))) continue;
+  // `-reduced` in a class is the same promise made from JavaScript (ui/hud.js reads the media query).
+  const reduced = /prefers-reduced-motion:\s*reduce/.test(r.at) || /-reduced\b/.test(r.selector);
+  for (const [prop, value] of decls(r.body)) {
+    if (!MOTION_PROPS.has(prop)) continue;
+    const bare = value.replace(/var\(--[\w-]+\)/g, ' ').replace(/cubic-bezier\([^)]*\)/g, ' cubic-bezier ').replace(/steps\([^)]*\)/g, ' steps ');
+    for (const m of bare.matchAll(/(?:^|[\s,])(-?[\d.]+)(ms|s)\b/g)) {
+      const ms = parseFloat(m[1]) * (m[2] === 's' ? 1000 : 1);
+      if (ms === 0 || (reduced && ms === 120)) continue;
+      problems.push(`${r.file} ${r.selector}: ${prop} has the literal ${m[1]}${m[2]}; a duration is --sr-fast, --sr-mid or --sr-slow${reduced ? '' : ' (120ms only under prefers-reduced-motion)'}`);
+    }
+    for (const m of bare.matchAll(/(?:^|[\s,])(ease(?:-in|-out|-in-out)?|cubic-bezier|steps)(?=$|[\s,])/g)) {
+      problems.push(`${r.file} ${r.selector}: ${prop} uses ${m[1]}; a curve is --sr-ease, --sr-ease-in or linear`);
+    }
+    if (/\binfinite\b/.test(bare)) problems.push(`${r.file} ${r.selector}: ${prop} loops; nothing in the chrome loops`);
+  }
+}
+// Under reduced motion the tokens themselves are the 120 ms linear fade, so every rule above is.
+{
+  const reducedRoot = all.find((r) => r.selector === ':root' && /prefers-reduced-motion:\s*reduce/.test(r.at));
+  const d = new Map(reducedRoot ? decls(reducedRoot.body) : []);
+  check(['--sr-fast', '--sr-mid', '--sr-slow'].every((n) => d.get(n) === '120ms') && d.get('--sr-ease') === 'linear' && d.get('--sr-ease-in') === 'linear',
+    'under prefers-reduced-motion :root turns --sr-fast, --sr-mid and --sr-slow into 120ms and both curves into linear');
+}
+// Reduced motion reaches every stylesheet that moves anything: a sheet with a transition or an
+// animation and no `prefers-reduced-motion` block has forgotten the people who asked.
+for (const f of FILES) {
+  const mine = all.filter((r) => r.file === f);
+  const moves = mine.some((r) => decls(r.body).some(([p, v]) => (p === 'transition' || p === 'animation') && v !== 'none'));
+  check(!moves || mine.some((r) => /prefers-reduced-motion:\s*reduce/.test(r.at)), `${f} moves things and has no prefers-reduced-motion block`);
+}
+// The sidebar's view push (0061 req 12): 220 ms, a 12 px slide and a fade; back comes from the left.
+{
+  const push = all.find((r) => r.selector === '.sr-side__view.is-current' && r.at === '');
+  check(!!push && /sr-view-in var\(--sr-mid\) var\(--sr-ease\)/.test(push.body), 'the sidebar view push is sr-view-in in --sr-mid with --sr-ease');
+  const raw = FILES.map((f) => strip(readFileSync(join(ROOT, f), 'utf8'))).join('\n');
+  check(/@keyframes sr-view-in\s*\{\s*from\s*\{[^}]*opacity:\s*0[^}]*translateX\(12px\)/.test(raw), 'sr-view-in starts 12 px to the right, from nothing');
+  check(/@keyframes sr-view-back\s*\{\s*from\s*\{[^}]*opacity:\s*0[^}]*translateX\(-12px\)/.test(raw), 'sr-view-back starts 12 px to the left, from nothing');
+}
+
+// --- 10. faces: exactly the four (the amendment's three and spec 0061's serif), self-hosted -------
 const fontsCss = readFileSync(join(ROOT, 'site/css/fonts.css'), 'utf8');
 const css = [...FILES.map((f) => readFileSync(join(ROOT, f), 'utf8')), fontsCss].join('\n');
 const faces = [...strip(css).matchAll(/@font-face\s*\{([^}]*)\}/g)].map((m) => m[1]);
 const families = new Set(faces.map((b) => (/font-family:\s*["']?([^;"']+)/.exec(b) || [])[1]).filter(Boolean).map((f) => f.trim()));
-const FACES = ['Inter', 'Barlow Semi Condensed', 'JetBrains Mono'];
-check(families.size === 3 && FACES.every((f) => families.has(f)), `@font-face declares ${[...families].join(', ') || 'nothing'}; exactly Inter, Barlow Semi Condensed and JetBrains Mono`);
+const FACES = ['Inter', 'Barlow Semi Condensed', 'JetBrains Mono', 'Instrument Serif'];
+check(families.size === 4 && FACES.every((f) => families.has(f)), `@font-face declares ${[...families].join(', ') || 'nothing'}; exactly Inter, Barlow Semi Condensed, JetBrains Mono and Instrument Serif`);
 check(!/Bricolage/i.test(strip(css)), 'Bricolage Grotesque is not loaded (design-language amendment 2026-09-28)');
 for (const b of faces) {
   const src = /url\(['"]?\.\.\/fonts\/([^'")]+\.woff2)['"]?\)\s*format\(['"]woff2['"]\)/.exec(b);
@@ -267,10 +364,35 @@ for (const b of faces) {
 check(/^'Inter',/.test(token('--sr-font') || ''), `--sr-font starts with Inter (${token('--sr-font')})`);
 check(/^'JetBrains Mono',/.test(token('--sr-font-mono') || ''), `--sr-font-mono starts with JetBrains Mono (${token('--sr-font-mono')})`);
 check(/^'Barlow Semi Condensed',/.test(token('--sr-font-hud') || ''), `--sr-font-hud starts with Barlow Semi Condensed (${token('--sr-font-hud')})`);
+check(/^'Instrument Serif',.*\bserif$/.test(token('--sr-font-serif') || ''), `--sr-font-serif starts with Instrument Serif and ends in the system's serif (${token('--sr-font-serif')})`);
+
+// The serif (spec 0061 task 5, design section 9): ONE weight, one Latin file inside serif_bytes, and
+// four roles: the wordmark (and its first letter on the collapsed handle), a card's name, a trip's
+// titles and the first Right-now line. A fifth use is a design decision, so it fails here first.
+const serifFaces = faces.filter((b) => /font-family:\s*["']?Instrument Serif/.test(b));
+check(serifFaces.length === 1 && /font-weight:\s*400/.test(serifFaces[0] || ''), `Instrument Serif is one file at weight 400 (found ${serifFaces.length})`);
+{
+  const { BUDGETS } = await import(join(ROOT, 'site/js/data/budgets.js'));
+  const bytes = statSync(join(ROOT, 'site/fonts/instrument-serif-400-latin.woff2')).size;
+  check(bytes <= BUDGETS.serif_bytes, `the serif is ${bytes} B, over serif_bytes ${BUDGETS.serif_bytes} B`);
+}
+const SERIF_ROLES = [
+  /^\.sr-wordmark$/, /^\.sr-side\.is-collapsed \.sr-side__handle$/, /^\.sr-card__name$/,
+  /^\.sr-tripsheet__name$/, /^\.sr-now__row\.is-lead \.sr-now__btn$/,
+];
+for (const r of all) {
+  for (const [prop, value] of decls(r.body)) {
+    if ((prop !== 'font' && prop !== 'font-family') || !/var\(--sr-font-serif\)/.test(value)) continue;
+    const sels = r.selector.split(',').map((x) => x.trim().replace(/\s+/g, ' '));
+    check(sels.every((x) => SERIF_ROLES.some((re) => re.test(x))), `${r.file} ${r.selector}: the serif is for the wordmark, a card's name, a trip's titles and the first Right-now line only`);
+    check(prop !== 'font' || /^400 /.test(value), `${r.file} ${r.selector}: the serif is loaded at 400 only (${value})`);
+  }
+}
+for (const re of SERIF_ROLES) check(all.some((r) => re.test(r.selector) && /var\(--sr-font-serif\)/.test(r.body)), `no rule ${re} sets the serif: one of its roles lost it`);
 
 if (problems.length) {
   console.error('tokens FAILED:\n  ' + problems.join('\n  '));
   if (table.length) console.error('  contrast: ' + table.join('; '));
   process.exit(1);
 }
-console.log(`tokens ok: ${DESIGN_TOKENS.length} tokens defined once, the palette unchanged, 6 px corners, the lit edge and the brackets in place, nothing read under 13 px, Compact and the panel motion defined, three faces self-hosted; contrast ${table.join('; ')}`);
+console.log(`tokens ok: ${DESIGN_TOKENS.length} tokens defined once, the palette unchanged, 6 px corners, the lit edge and the brackets in place, nothing read under 13 px, Compact and the panel motion defined, four faces self-hosted; contrast ${table.join('; ')}`);

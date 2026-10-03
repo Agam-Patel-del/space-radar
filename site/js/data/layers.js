@@ -659,7 +659,7 @@ export const LAYERS = [
   },
   {
     id: 'just-launched',
-    display: 'Launched in the last two weeks',
+    display: 'Just launched',
     klass: 'satellite',
     // registry/layers.yaml says celestrak-active. `last-30-days` is 112 kB against 6.9 MB and
     // is the same rule expressed by the publisher, so this row uses it instead.
@@ -848,7 +848,7 @@ export const LAYERS = [
     // at a placeholder perihelion, so on a normal day Ceres was on nobody's map. These stand in
     // for nothing, so they load always, like the oddities. `source: bundled`: nothing to fetch.
     id: 'far-bodies',
-    display: 'Dwarf planets and far travellers',
+    display: 'Dwarf planets, far travellers',
     klass: 'asteroid',
     source: 'bundled',
     parse: null,
