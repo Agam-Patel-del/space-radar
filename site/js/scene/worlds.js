@@ -226,6 +226,14 @@ export function worldRecords() {
       // not round says the ball is not its shape.
       flat: !!w.look.flat && !w.look.map,
       irregular: !!w.look.irregular,
+      // 2026-10-05: what kind of map it wears (`tinted`: a black-and-white mosaic in a chosen colour;
+      // `toned`: Cassini's infrared-to-ultraviolet colours, toned down; `infrared`: Titan's ground,
+      // seen through the haze at 938 nm; `colour`: the mosaic's own), and whether its shape is the
+      // measured one (Phobos, Deimos). The card says each (ui/cards.js derivedDrawingLine).
+      // A moon drawn keeping one face to its planet: its card's turn is its lap (ui/cards.js).
+      locked: w.rotation === 'locked',
+      mapKind: w.look.map && w.look.mapKind ? w.look.mapKind : '',
+      shaped: !!w.look.shape,
       // Spec 0054: every world drawn with the world material is exposed for its own sunlight, and
       // the card says so (ui/cards.js drawingLine); the Moon's also says how much its earthshine is
       // brightened. The Earth has its own shader and its own sunlight is the reference; the Sun is
@@ -349,37 +357,48 @@ export const WORLDS = [
   // 1.5 degrees of Charon (tests/test_worlds_layer.mjs measures both). Titan is a
   // trip stop too and stays one colour on purpose: in visible light its haze is all anyone has seen.
   //
+  // TWENTY OF THE TWENTY-ONE CARRY A MAP SINCE 2026-10-05 (issues #387 to #415): all but Deimos, for
+  // which no public-domain mosaic was found. scripts/build-textures.py `--only moons` makes them
+  // and says how; registry/textures.yaml has each one's source and how much of the sphere it
+  // covers. `mapKind` is what kind of picture it is, for the card: `tinted` (a black-and-white
+  // mosaic in the flat colour), `toned` (Cassini's infrared-to-ultraviolet colours at 35 %),
+  // `infrared` (Titan's ground through the haze) or `colour`. Every mapped moon is `locked`:
+  // longitude 0, the middle of its map, toward its planet, and north along the planet's pole
+  // (Iapetus's orbit is tilted 15 degrees to Saturn's equator, so its map is that far off true).
+  // `shape` names a row of data/moonshapes.js: Phobos and Deimos are bent to their measured shapes,
+  // and `reach` is that shape's longest radius over the mean one (tests/test_moon_shapes.mjs).
+  //
   // The moons come AFTER Jupiter on purpose: update() places a moon from its planet's drawn disc,
   // so the planet has to have been placed first in the same frame.
   {
     // "charcoal black, to dark orange and white" (Wikipedia): a light orange-tan.
     id: 'pluto', display: 'Pluto', parent: 'sun', radiusKm: 1188.3,
     body: 'Pluto', frame: SUN_INERTIAL, view: VIEW_COMPRESSED, rotation: 'iau',
-    look: { flat: true, tint: 0xb4926f, albedo: 0.52, map: '2k_pluto_newhorizons.jpg', rough: 0.3 },
+    look: { flat: true, tint: 0xb4926f, map: '2k_pluto_usgs.webp', mapKind: 'tinted', albedo: 0.52, rough: 0.3 },
   },
   {
     // "shades of yellow, red, white, black, and green, largely due to ... sulfur" (Wikipedia).
     id: 'io', display: 'Io', parent: 'jupiter', radiusKm: 1821.5,
     body: 'Io', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
-    look: { flat: true, tint: 0xc9b061, albedo: 0.62, map: '1k_io_usgs.jpg', rough: 0.35 },
+    look: { flat: true, tint: 0xc9b061, map: '2k_io_usgs.webp', mapKind: 'colour', albedo: 0.62, rough: 0.35 },
   },
   {
     // "a pale ... surface striated by light tan cracks and streaks" (Wikipedia).
     id: 'europa', display: 'Europa', parent: 'jupiter', radiusKm: 1560.8,
     body: 'Europa', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
-    look: { flat: true, tint: 0xd6cfc0, albedo: 0.68, map: '1k_europa_usgs.jpg' },
+    look: { flat: true, tint: 0xd6cfc0, map: '2k_europa_usgs.webp', mapKind: 'tinted', albedo: 0.68 },
   },
   {
     // "very old, highly cratered, dark regions and somewhat younger ... lighter regions" (Wikipedia).
     id: 'ganymede', display: 'Ganymede', parent: 'jupiter', radiusKm: 2631.2,
-    body: 'Ganymede', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0x958b7e, albedo: 0.44, rough: 0.3 },
+    body: 'Ganymede', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0x958b7e, map: '2k_ganymede_usgs.webp', mapKind: 'tinted', albedo: 0.44, rough: 0.3 },
   },
   {
     // "Callisto's surface has an albedo of about 20%" (Wikipedia): the darkest of the four.
     id: 'callisto', display: 'Callisto', parent: 'jupiter', radiusKm: 2410.3,
-    body: 'Callisto', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0x5e564c, albedo: 0.19, rough: 0.4 },
+    body: 'Callisto', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0x5e564c, map: '2k_callisto_usgs.webp', mapKind: 'tinted', albedo: 0.19, rough: 0.4 },
   },
   // SIXTEEN MORE MOONS (six on 2026-09-22, ten more the same day), flat like the five above and in
   // the same one light-to-dark order: their albedos are NASA's fact sheets' too (the Saturnian,
@@ -402,70 +421,70 @@ export const WORLDS = [
     // "the most reflective body in the solar system ... bright white all over" (NASA Science).
     id: 'enceladus', display: 'Enceladus', parent: 'saturn', radiusKm: 252.1,
     body: 'Enceladus', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
-    look: { flat: true, tint: 0xeff1f1, albedo: 1.0, map: '1k_enceladus_cassini.jpg' },
+    look: { flat: true, tint: 0xeff1f1, map: '2k_enceladus_cassini.webp', mapKind: 'toned', albedo: 1.0 },
   },
   {
     // "Titan's orange color comes from a thick atmospheric haze" (Wikipedia): the haze, not the
     // ground, is what anyone has seen of Titan in visible light. Darkened 2026-09-22, same hue.
     id: 'titan', display: 'Titan', parent: 'saturn', radiusKm: 2574.76,
-    body: 'Titan', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0x8f5e26, albedo: 0.22, haze: true, limb: 0.9, air: 'titan', rim: { colour: 0xe0a050, gain: 0.7 } },
+    body: 'Titan', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0x8f5e26, map: '2k_titan_cassini_iss.webp', mapKind: 'infrared', albedo: 0.22, haze: true, limb: 0.9, air: 'titan', rim: { colour: 0xe0a050, gain: 0.7 } },
   },
   {
     // "Triton's reddish color" (Wikipedia) on frost with "an icy sheen" (NASA Science): a pale pink.
     id: 'triton', display: 'Triton', parent: 'neptune', radiusKm: 1352.6,
     body: 'Triton', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
-    look: { flat: true, tint: 0xe3d4cc, albedo: 0.72, map: '1k_triton_voyager.jpg' },
+    look: { flat: true, tint: 0xe3d4cc, map: '1k_triton_voyager.jpg', mapKind: 'toned', albedo: 0.72 },
   },
   {
     // "Charon's color palette is not as diverse as Pluto's. Most striking is the reddish north
     // (top) polar region" (NASA Science): a grey, faintly warm.
     id: 'charon', display: 'Charon', parent: 'pluto', radiusKm: 606.0,
-    body: 'Charon', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0x8e8a86, albedo: 0.42, rough: 0.3 },
+    body: 'Charon', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0x8e8a86, map: '2k_charon_usgs.webp', mapKind: 'tinted', albedo: 0.42, rough: 0.3 },
   },
   {
     // "composed of C-type rock, similar to blackish carbonaceous chondrite asteroids" (NASA
-    // Science, of both moons of Mars). `irregular`: a lumpy rock drawn as a ball of its mean
-    // radius, and its card says the true shape is not drawn.
+    // Science, of both moons of Mars). A lumpy rock: `shape` bends the ball of its mean radius
+    // to Gaskell's model the first time it is looked at, and its card says so.
     id: 'phobos', display: 'Phobos', parent: 'mars', radiusKm: 11.08,
-    body: 'Phobos', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0x4a4540, albedo: 0.07, irregular: true, rough: 0.5 },
+    body: 'Phobos', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0x4a4540, map: '2k_phobos_viking.webp', mapKind: 'tinted', albedo: 0.07, shape: 'phobos', reach: 1.25, rough: 0.5 },
   },
   {
     // The same NASA sentence; a shade lighter than Phobos for its 0.08 against 0.07.
     id: 'deimos', display: 'Deimos', parent: 'mars', radiusKm: 6.2,
-    body: 'Deimos', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0x524d47, albedo: 0.08, irregular: true, rough: 0.5 },
+    body: 'Deimos', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0x524d47, albedo: 0.08, shape: 'deimos', reach: 1.41, rough: 0.5 },
   },
   // The other five round moons of Saturn, then all five of Uranus's (2026-09-22).
   {
     // "very bright, the second-brightest of the moons of Saturn after Enceladus, and neutral in
     // color" (Wikipedia): a near-white with no hue to speak of.
     id: 'tethys', display: 'Tethys', parent: 'saturn', radiusKm: 531.1,
-    body: 'Tethys', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0xe3e5e7, albedo: 0.8 },
+    body: 'Tethys', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0xe3e5e7, map: '2k_tethys_cassini.webp', mapKind: 'toned', albedo: 0.8 },
   },
   {
     // "a network of bright ice cliffs" on ice over "a dense core (probably silicate rock)" (NASA
     // Science, Wikipedia): white ice, faintly warm.
     id: 'dione', display: 'Dione', parent: 'saturn', radiusKm: 561.4,
-    body: 'Dione', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0xd4d5d3, albedo: 0.7 },
+    body: 'Dione', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0xd4d5d3, map: '2k_dione_cassini.webp', mapKind: 'toned', albedo: 0.7 },
   },
   {
     // "a frozen dirty snowball" (NASA Science): Dione's albedo to the fact sheet's one figure, and
     // the same white a shade dirtier.
     id: 'rhea', display: 'Rhea', parent: 'saturn', radiusKm: 763.5,
-    body: 'Rhea', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0xd5d3cc, albedo: 0.7 },
+    body: 'Rhea', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0xd5d3cc, map: '2k_rhea_cassini.webp', mapKind: 'toned', albedo: 0.7 },
   },
   {
     // "consists almost entirely of water ice, which is the only substance ever detected on Mimas"
     // (NASA Science): grey ice.
     id: 'mimas', display: 'Mimas', parent: 'saturn', radiusKm: 198.2,
-    body: 'Mimas', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0xa7aaac, albedo: 0.6 },
+    body: 'Mimas', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0xa7aaac, map: '2k_mimas_cassini.webp', mapKind: 'toned', albedo: 0.6 },
   },
   {
     // The two-faced one: "as dark as coal (albedo 0.03-0.05 with a slight reddish tinge)" on the
@@ -473,45 +492,45 @@ export const WORLDS = [
     // cannot be both, so it is drawn at the mean of the fact sheet's 0.05 and 0.5, in the reddish
     // tinge the dark side is described by, and copy/en.js says on the card that it has two faces.
     id: 'iapetus', display: 'Iapetus', parent: 'saturn', radiusKm: 734.3,
-    body: 'Iapetus', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0x89735f, albedo: 0.275, rough: 0.35 },
+    body: 'Iapetus', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0x89735f, map: '2k_iapetus_cassini.webp', mapKind: 'toned', albedo: 0.275, rough: 0.35 },
   },
   {
     // "the brightest surface of the five largest Uranian moons, but none of them reflect more than
     // about a third of the sunlight that strikes them ... darkened by a carbonaceous material"
     // (NASA Science): a light neutral grey, and the lightest of Uranus's five.
     id: 'ariel', display: 'Ariel', parent: 'uranus', radiusKm: 578.9,
-    body: 'Ariel', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0x868786, albedo: 0.39, rough: 0.3 },
+    body: 'Ariel', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0x868786, map: '1k_ariel_voyager.webp', mapKind: 'tinted', albedo: 0.39, rough: 0.3 },
   },
   {
     // "fairly uniformly dark. However, the cliffs bordering certain impact craters reveal, at
     // depth, the presence of much more luminous material" (Wikipedia): mid grey.
     id: 'miranda', display: 'Miranda', parent: 'uranus', radiusKm: 235.8,
-    body: 'Miranda', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0x7d7f81, albedo: 0.32, rough: 0.3 },
+    body: 'Miranda', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0x7d7f81, map: '1k_miranda_voyager.webp', mapKind: 'tinted', albedo: 0.32, rough: 0.3 },
   },
   {
     // "The neutral gray color of Titania is typical of most of the significant Uranian moons"
     // (NASA Science), against Wikipedia's "relatively dark and slightly red": NASA's grey, since
     // it is the one describing what the colour IS.
     id: 'titania', display: 'Titania', parent: 'uranus', radiusKm: 788.9,
-    body: 'Titania', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0x767573, albedo: 0.27, rough: 0.3 },
+    body: 'Titania', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0x767573, map: '1k_titania_voyager.webp', mapKind: 'tinted', albedo: 0.27, rough: 0.3 },
   },
   {
     // "dark and slightly red in color" (Wikipedia): a dark warm grey.
     id: 'oberon', display: 'Oberon', parent: 'uranus', radiusKm: 761.4,
-    body: 'Oberon', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0x7a6a62, albedo: 0.23, rough: 0.3 },
+    body: 'Oberon', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0x7a6a62, map: '1k_oberon_voyager.webp', mapKind: 'tinted', albedo: 0.23, rough: 0.3 },
   },
   {
     // "the darkest among Uranian moons" (Wikipedia), "reflects only 16 percent of the light that
     // strikes its surface" (NASA Science): a dark neutral grey, darker than all four of its
     // sisters and than Titan.
     id: 'umbriel', display: 'Umbriel', parent: 'uranus', radiusKm: 584.7,
-    body: 'Umbriel', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT,
-    look: { flat: true, tint: 0x616060, albedo: 0.21, rough: 0.3 },
+    body: 'Umbriel', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
+    look: { flat: true, tint: 0x616060, map: '1k_umbriel_voyager.webp', mapKind: 'tinted', albedo: 0.21, rough: 0.3 },
   },
 ];
 
@@ -1175,6 +1194,26 @@ export function createWorlds(scene, opts = {}) {
     return true;
   }
 
+  // THE MEASURED SHAPES (2026-10-05). Phobos and Deimos are not balls, and their shapes are
+  // published (data/moonshapes.js names the models). The radius grids and the code that bends a
+  // sphere to one are fetched together, by dynamic import, the first time the moon is big enough to
+  // show a shape or is selected: the same moment as its map, and never at boot.
+  const shapeWaiting = new Set(WORLDS.filter((w) => w.look.shape).map((w) => w.id));
+  const shaped = new Set();
+  function fetchShape(id) {
+    if (!shapeWaiting.has(id)) return null;
+    shapeWaiting.delete(id);
+    const w = BY_ID.get(id);
+    return Promise.all([import('./moonshape.js'), import('../data/moonshapes.js')]).then(([code, data]) => {
+      const mesh = meshes.get(id);
+      const shape = data.MOON_SHAPES[w.look.shape];
+      if (!mesh || !shape) return false;
+      code.applyMoonShape(mesh.geometry, shape, data.MOON_SHAPE_STEP_DEG);
+      shaped.add(id);
+      return true;
+    }).catch(() => false); // a ball of its mean radius is what it was, and still true to size
+  }
+
   const root = new THREE.Group();
   root.name = 'worlds';
   if (scene) scene.add(root);
@@ -1301,6 +1340,9 @@ export function createWorlds(scene, opts = {}) {
   // this instant, the unit directions of the ones the compression is about to move, and how close
   // each of those comes to another.
   const truePos = new Map();
+  // A moon's radius at its planet's enlargement, scene units, WITHOUT the one-pixel floor: the size
+  // it is drawn once the camera is near enough for that to be more than a pixel (arrivalRadiusUnits).
+  const systemRadius = new Map();
   const crowd = [];
   const crowdSlot = [];
   const nearest = new Map();
@@ -1311,6 +1353,7 @@ export function createWorlds(scene, opts = {}) {
    * is not drawn this frame or is not enlarged, which leaves nothing to be drawn around.
    */
   function drawWithParent(w, mesh, trueDistKm) {
+    systemRadius.delete(w.id);
     const parentMesh = meshes.get(w.parent);
     const ps = viewState.get(w.parent);
     if (!parentMesh || !parentMesh.visible || !ps || !ps.exaggerated) return false;
@@ -1335,6 +1378,7 @@ export function createWorlds(scene, opts = {}) {
     }
     const floorKm = viewKm * MOON_VIEW.MIN_ANGULAR_RADIUS_RAD;
     const drawnRadiusKm = Math.max(scaledKm, floorKm);
+    systemRadius.set(w.id, scaledKm / stage.unitKm);
     mesh.position.copy(_pos);
     mesh.scale.setScalar(drawnRadiusKm / stage.unitKm);
     viewState.set(w.id, describe(w, trueDistKm, drawnDistKm, drawnRadiusKm, { parent: ps, floored: floorKm > scaledKm }));
@@ -1582,6 +1626,12 @@ export function createWorlds(scene, opts = {}) {
         const tanHalfFov = Math.tan(((camera.fov || 45) * Math.PI) / 360);
         if (!(dist > 0) || mesh.scale.x / dist / tanHalfFov >= TEXTURE_AT_HALF_VIEW) fetchMap(w.id);
       }
+      if (camera && mesh.visible && shapeWaiting.has(w.id)) {
+        camera.getWorldPosition(_camPosU);
+        const dist = mesh.position.distanceTo(_camPosU);
+        const tanHalfFov = Math.tan(((camera.fov || 45) * Math.PI) / 360);
+        if (!(dist > 0) || mesh.scale.x / dist / tanHalfFov >= TEXTURE_AT_HALF_VIEW) fetchShape(w.id);
+      }
     }
   }
 
@@ -1590,7 +1640,24 @@ export function createWorlds(scene, opts = {}) {
    * selected, so a flight toward Saturn spends its 900 ms downloading Saturn rather than arriving
    * at a flat tan ball and waiting. Returns true if this call started a fetch.
    */
-  function preload(id) { return fetchMap(id); }
+  function preload(id) { fetchShape(id); return fetchMap(id); }
+
+  /**
+   * The unit vector from a world toward the Sun, in scene axes, as its own shader is lit this frame
+   * (true positions, not the drawn ones). main.js arrives on that side (scene/framing.js litOffset).
+   * Null for the Sun, and for a world that has not been placed yet.
+   */
+  function sunDirOf(id) {
+    const mesh = meshes.get(id);
+    const u = mesh && mesh.material && mesh.material.uniforms && mesh.material.uniforms.uSunDir;
+    if (!u || !u.value || !(u.value.lengthSq() > 0)) return null;
+    return u.value.clone();
+  }
+
+  /** Bend a moon to its measured shape now. A promise of true once it is; null if it has none waiting. */
+  function preloadShape(id) { return fetchShape(id); }
+  /** True once a world wears its measured shape rather than a ball. */
+  function hasShape(id) { return shaped.has(id); }
 
   /** The worlds still drawn in their mean colour, for the test and the status panel. */
   function waitingMaps() { return [...waiting.keys()]; }
@@ -1659,6 +1726,26 @@ export function createWorlds(scene, opts = {}) {
   function drawnRadiusUnits(id) {
     const mesh = meshes.get(id);
     return mesh ? mesh.scale.x : 0;
+  }
+
+  /**
+   * The radius a world will have when the camera has ARRIVED at it, scene units (issue #419).
+   *
+   * A moon of a squeezed planet is never drawn under a pixel: its radius is floored at 0.001 rad AS
+   * SEEN FROM THE CAMERA (drawWithParent), so from the Earth a selected Ganymede is 7.6 times the
+   * size its system's scale gives it. main.js framed the arrival on that -- 3.5 of those radii out --
+   * and the floor shrank with every kilometre of the approach until the moon was its scaled size:
+   * a disc 0.037 rad in radius, 36 pixels of an 800-pixel screen, "a small crescent in a lot of
+   * empty sky" (the issue; the arithmetic is in tests/test_arrival.mjs). This is the radius without
+   * the floor, which is what the camera finds when it gets there. Every other world is as drawn.
+   */
+  function arrivalRadiusUnits(id) {
+    const r = systemRadius.get(id);
+    // A lumpy moon reaches farther than its mean radius (`look.reach`, the model's longest radius
+    // over the mean: Deimos 1.41), and the arrival has to hold all of it: framed on the mean,
+    // Deimos's long axis ran off the screen (seen 2026-10-06).
+    const w = BY_ID.get(id);
+    return (r > 0 ? r : drawnRadiusUnits(id)) * ((w && w.look.reach) || 1);
   }
 
   const _proj = new THREE.Vector3();
@@ -1804,6 +1891,10 @@ export function createWorlds(scene, opts = {}) {
     earthshine,
     drawnPositionOf,
     drawnRadiusUnits,
+    arrivalRadiusUnits,
+    preloadShape,
+    hasShape,
+    sunDirOf,
     pick,
     pickAll,
     dispose,

@@ -16,7 +16,7 @@ import { createWorlds, WORLDS, positionOf } from './scene/worlds.js';
 import { createStarfield } from './scene/starfield.js';
 import { createGlyphLayer } from './scene/glyphs.js';
 import { createHeroes, closeUpDistance, SELECTED_PX } from './scene/heroes.js';
-import { limbFraming, fitDistance, discDistance } from './scene/framing.js';
+import { limbFraming, fitDistance, discDistance, litOffset } from './scene/framing.js';
 import { createCameraRig, worldFramingDistance } from './scene/camera.js';
 import { createViewShift, MAX_SHIFT_FRACTION } from './scene/viewshift.js';
 import { readMoment, writeMoment, bootLink, laterLink, read as readUrlKeys, write as writeUrlState, clear as clearUrlState, stopIndex } from './ui/urlstate.js';
@@ -719,7 +719,27 @@ export async function boot({ setStatus } = {}) {
       // behind, mirrored -- and scene/nebulae.js rightly draws no picture off the line it was
       // taken along. Pi less a few degrees: the same framing, turned around.
       const fromHere = record.klass === 'dso' && isLadderStage(stage.worldId) ? Math.PI - 0.1 : undefined;
-      cameraRig.flyTo({ targetScene: pos, distance: limb ? limb.distance : distance, tilt: limb ? limb.tilt : fromHere, ms });
+      // A world is met on its lit face (issue #419): the rig's default is the far side from the
+      // stage's world, which for everything beyond the Earth is the night side.
+      const lit = record.klass === 'world' ? litOffset(worlds.sunDirOf(record.id), camera.up) : null;
+      // AND THE DISTANCE IS SOLVED AGAIN ON ARRIVAL, once. A squeezed planet's drawn size depends on
+      // where the camera is (scene/worlds.js: the neighbour cap is measured from the camera when
+      // worlds crowd), and its moons are drawn at its scale: SEEN 2026-10-06, Mimas framed from the
+      // Earth arrived a third wider than the screen's free band, because Saturn's drawn disc, and
+      // Mimas with it, had grown on the way. Two frames after the flight ends the scene has been
+      // placed from the new camera; if the framing is more than 8 % off, a short second move fixes it.
+      const settle = record.klass === 'world' ? (reason) => {
+        if (reason !== 'done' || typeof requestAnimationFrame !== 'function') return;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (selected !== record || cameraRig.state.flying) return;
+          const at = positionOfRecord(record);
+          const again = at ? arrivalDistance(record, at) : NaN;
+          if (!(again > 0) || Math.abs(again / distance - 1) < 0.08) return;
+          const side = litOffset(worlds.sunDirOf(record.id), camera.up);
+          cameraRig.flyTo({ targetScene: at, distance: again, offset: side || undefined, ms: 500, targetDelay: 0 });
+        }));
+      } : undefined;
+      cameraRig.flyTo({ targetScene: pos, distance: limb ? limb.distance : distance, tilt: limb ? limb.tilt : fromHere, offset: lit || undefined, ms, onArrive: settle });
     }
     // Following something standing on the Moon is following the Moon, which crosses its own
     // radius in about half an hour, so its centre is re-taught with every tick of the target.
@@ -804,14 +824,18 @@ export async function boot({ setStatus } = {}) {
     if (record && record.klass === 'world') {
       // 3.5 radii, or farther when the free part of the screen is narrower than that disc
       // (scene/framing.js discDistance: the Moon on a phone was wider than the phone).
-      const radius = worlds.drawnRadiusUnits(record.id);
+      // The radius it will have when the camera is there: a far moon is drawn no smaller than a
+      // pixel, and framing the arrival on that left Ganymede a speck (scene/worlds.js arrivalRadiusUnits).
+      const radius = worlds.arrivalRadiusUnits(record.id);
       const el = ctx.renderer && ctx.renderer.domElement;
       const room = freeRoom(el);
       const w = el && el.clientWidth > 0 ? el.clientWidth : window.innerWidth;
       const h = el && el.clientHeight > 0 ? el.clientHeight : window.innerHeight;
       const shareV = room ? Math.min(room.above, room.below) / (h / 2) : 1;
       const shareH = (w - 2 * Math.abs(viewShift.shiftXPx())) / w;
-      return Math.max(0.05, radius * 3.5, discDistance(radius, { fovDeg: camera.fov, aspect: w / h, shareV, shareH }));
+      // No nearer than three radii, whatever the unit: the old floor of 0.05 scene units is 50 km on
+      // the Earth's stage, which is inside the drawn Deimos's own arrival and outside nothing else.
+      return Math.max(radius * 3.5, discDistance(radius, { fovDeg: camera.fov, aspect: w / h, shareV, shareH }));
     }
     // On its system's stage a planet is a ball of its own size: eight radii, the trip's framing; the
     // host star is the whole system, every orbit in the picture.
@@ -1005,7 +1029,9 @@ export async function boot({ setStatus } = {}) {
     cameraRig.setWorldCentre({ x: 0, y: 0, z: 0 });
     cameraRig.stopFollow();
     const distance = w ? worldFramingDistance(r, camera.fov, camera.aspect) : system ? ctx.systems.framingDistanceUnits(stageId) : 5;
-    cameraRig.flyTo({ targetScene: { x: 0, y: 0, z: 0 }, distance, ms: 0 });
+    // The new centre of the map is met on its lit face too (the Sun is the light and has none).
+    const lit = w && w.id !== 'sun' ? litOffset(worlds.sunDirOf(w.id), camera.up) : null;
+    cameraRig.flyTo({ targetScene: { x: 0, y: 0, z: 0 }, distance, offset: lit || undefined, ms: 0 });
     return true;
   };
   // The Planets tab (spec 0061, ui/explore.js): the Sun's stage with every planet in the picture.

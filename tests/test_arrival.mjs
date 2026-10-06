@@ -82,6 +82,82 @@ check(closeUpDistance(at(400), 0, f) === Infinity, 'no viewport, no constraint')
   check(/gatherOthers\(\);\s*\n\s*const kept = \[\];/.test(src), 'the other worlds are gathered once a frame, before the docked-vehicle pass');
 }
 
+// Issue #419: a moon is framed on the size it has when the camera gets there, not on its one-pixel floor.
+{
+  const { createWorlds, MOON_VIEW, WORLDS: WORLDS_ROWS } = await import(join(JS, 'scene/worlds.js'));
+  const { discDistance } = await import(join(JS, 'scene/framing.js'));
+  stage.setWorld('earth');
+  const camera = new THREE.PerspectiveCamera(45, 1440 / 900, 1e-6, 1e12);
+  camera.position.set(0, 0, 30);
+  camera.updateMatrixWorld();
+  const worlds = createWorlds(new THREE.Scene(), { textureBase: 't/', loadTexture: () => new THREE.Texture(), camera });
+  const t = Date.parse('2026-10-03T12:00:00Z');
+  stage.setTime(t);
+  worlds.update(t);
+  const tanHalf = Math.tan((45 / 2) * Math.PI / 180);
+  // Charon is not in the list: Pluto is drawn so much nearer than it is that Charon's scaled size is already over a pixel.
+  for (const id of ['ganymede', 'io', 'mimas', 'miranda', 'phobos', 'deimos', 'triton']) {
+    const floored = worlds.drawnRadiusUnits(id);
+    const real = worlds.arrivalRadiusUnits(id);
+    const pos = worlds.meshFor(id).position.clone();
+    check(real > 0 && real < floored, `${id} seen from the Earth is drawn at its floor (${floored.toExponential(2)} units), larger than its system's scale gives it (${real.toExponential(2)})`);
+    check(Math.abs(floored / pos.distanceTo(camera.position) - MOON_VIEW.MIN_ANGULAR_RADIUS_RAD) < 1e-6, `${id}: and that floor is one pixel from where the camera is`);
+    // The old arrival: 3.5 floored radii out. Put the camera there and the moon is its scaled size.
+    const at = (d) => {
+      camera.position.copy(pos).add(new THREE.Vector3(0, 0, d));
+      camera.updateMatrixWorld();
+      worlds.update(t);
+      const m = worlds.meshFor(id);
+      return (m.scale.x / m.position.distanceTo(camera.position)) / tanHalf; // the disc's share of half the height
+    };
+    const before = at(floored * 3.5);
+    // Phobos and Deimos are framed on their longest radius, so their MEAN disc is smaller by that much.
+    const reach = WORLDS_ROWS.find((w) => w.id === id).look.reach || 1;
+    const after = at(Math.max(real * 3.5, discDistance(real, { fovDeg: 45, aspect: 1440 / 900 }))) * reach;
+    check(before < 0.35, `${id}: the old arrival, framed on the floor, left a disc ${(before * 100).toFixed(0)} % of the half-height`);
+    check(after > 0.6 && after < 0.85, `${id}: framed on its real size it fills ${(after * 100).toFixed(0)} % of the half-height, as a planet does`);
+    camera.position.set(0, 0, 30);
+    camera.updateMatrixWorld();
+    worlds.update(t);
+  }
+  check(worlds.arrivalRadiusUnits('mars') === worlds.drawnRadiusUnits('mars') && worlds.arrivalRadiusUnits('moon') === worlds.drawnRadiusUnits('moon'),
+    'a planet and the Moon arrive at the size they are drawn');
+}
+
+// ...and on its lit face: the rig stands where it is told to (flyTo's `offset`), and what main.js
+// tells it is scene/framing.js litOffset of the world's own Sun direction (scene/worlds.js sunDirOf).
+{
+  const { createCameraRig } = await import(join(JS, 'scene/camera.js'));
+  const { createWorlds } = await import(join(JS, 'scene/worlds.js'));
+  const { litOffset, ARRIVAL_PHASE } = await import(join(JS, 'scene/framing.js'));
+  stage.setWorld('earth');
+  const camera = new THREE.PerspectiveCamera(45, 1440 / 900, 1e-6, 1e12);
+  camera.position.set(0, 0, 30);
+  const rig = createCameraRig(camera, null);
+  const worlds = createWorlds(new THREE.Scene(), { textureBase: 't/', loadTexture: () => new THREE.Texture(), camera });
+  const t = Date.parse('2026-10-03T12:00:00Z');
+  stage.setTime(t);
+  worlds.update(t);
+  check(worlds.sunDirOf('sun') === null, 'the Sun has no lit side to arrive on');
+  for (const id of ['jupiter', 'saturn', 'mars', 'pluto', 'ganymede', 'moon', 'earth']) {
+    const sun = worlds.sunDirOf(id);
+    check(sun && Math.abs(sun.length() - 1) < 1e-6, `${id} knows where its Sun is`);
+    if (!sun) continue;
+    const target = worlds.drawnPositionOf(id) || new THREE.Vector3();
+    // The old arrival: the rig's own framing, beyond the subject from the stage's world.
+    rig.flyTo({ targetScene: target, distance: 5, ms: 0 });
+    rig.update(0.016);
+    const oldLit = (1 + camera.position.clone().sub(target).normalize().dot(sun)) / 2;
+    rig.flyTo({ targetScene: target, distance: 5, offset: litOffset(sun, camera.up), ms: 0 });
+    rig.update(0.016);
+    const from = camera.position.clone().sub(target).normalize();
+    const lit = (1 + from.dot(sun)) / 2;
+    check(Math.abs(Math.acos(Math.min(1, from.dot(sun))) - ARRIVAL_PHASE) < 0.02, `${id}: the camera stands ${(Math.acos(Math.min(1, from.dot(sun))) * 180 / Math.PI).toFixed(1)} degrees round from the Sun`);
+    check(lit > 0.88, `${id}: ${(lit * 100).toFixed(0)} % of the disc is lit on arrival (the rig's own framing gave ${(oldLit * 100).toFixed(0)} %)`);
+    if (['jupiter', 'saturn', 'pluto', 'ganymede'].includes(id)) check(oldLit < 0.5, `${id}: the old arrival showed mostly night (${(oldLit * 100).toFixed(0)} % lit), which is what the issue saw`);
+  }
+}
+
 if (problems.length) { console.error('arrival FAILED:\n  ' + problems.join('\n  ')); process.exit(1); }
 const d = closeUpDistance(at(395), 750, f) * stage.unitKm;
 console.log(`arrival ok: Tiangong is reached from ${Math.round(d)} km at 750 px tall (was 7 000), drawn at the full ${SELECTED_PX} px; the old arrival drew ${old.toFixed(0)} px`);

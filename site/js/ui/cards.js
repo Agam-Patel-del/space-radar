@@ -60,6 +60,7 @@ import {
   worldRadiusKm,
   toStage,
   spinPeriodHours,
+  moonLapHours,
   yearDays,
 } from '../propagate/frames.js';
 import { predictPasses } from '../sky/passes.js';
@@ -1248,7 +1249,9 @@ function rightNowRows(record, m, passInfo) {
   // from astronomy-engine, the library that places and turns it (propagate/frames.js). A TURN,
   // against the stars, and the label says so: Mercury turns in 59 days and its day is 176.
   if (klassOf(record) === 'world') {
-    const hours = spinPeriodHours(record.id, m.tMs);
+    // A moon that keeps one face to its planet (scene/worlds.js `rotation: 'locked'`, which is how
+    // its globe is turned) turns once a lap: the lap, measured from where it is drawn.
+    const hours = spinPeriodHours(record.id, m.tMs) || (pick(md, 'locked') === true ? moonLapHours(record.id, m.tMs) : null);
     if (hours) rows.push([R.spin, hours >= 72 ? t(V.days, { n: fmt.smart(hours / 24) }) : t(V.hours, { n: fmt.smart(hours) })]);
     const days = pick(md, 'parent') === 'sun' ? yearDays(record.id) : null;
     if (days) rows.push([R.yearLength, t(V.days, { n: days >= 100 ? fmt.int(days) : fmt.smart(days) })]);
@@ -1908,7 +1911,18 @@ function derivedDrawingLine(record, T) {
   if (klass === 'world') {
     const md = meta(record);
     const parts = [];
-    if (pick(md, 'flat') === true) parts.push(t(pick(md, 'irregular') === true ? T.worldFlatIrregular : T.worldFlat, { name: displayName(record) }));
+    // 2026-10-05: a moon bent to its measured shape says so, with or without a map (Phobos, Deimos);
+    // a map that is a tinted black-and-white mosaic, toned-down false colour or an infrared view
+    // says which; and one with a side nobody has photographed says that the plain part is not a guess.
+    const shaped = pick(md, 'shaped') === true;
+    if (pick(md, 'flat') === true) {
+      const line = shaped ? T.worldFlatShaped : pick(md, 'irregular') === true ? T.worldFlatIrregular : T.worldFlat;
+      parts.push(t(line, { name: displayName(record) }));
+    } else if (shaped && T.worldShaped) parts.push(T.worldShaped);
+    const kind = T.worldMap && T.worldMap[pick(md, 'mapKind')];
+    if (kind) parts.push(kind);
+    const part = T.worldCoverage && T.worldCoverage[record.id];
+    if (part && pick(md, 'flat') !== true) parts.push(part);
     if (pick(md, 'exposed') === true && T.worldLit) parts.push(T.worldLit);
     const gain = Number(pick(md, 'earthshineGain'));
     if (gain > 0 && T.worldEarthshine) parts.push(t(T.worldEarthshine, { n: fmt.int(gain) }));
