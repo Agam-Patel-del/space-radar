@@ -1533,8 +1533,11 @@ export async function boot({ setStatus } = {}) {
     setMoment(readMomentFromHash(), { silent: true });
     // `at` too, not only at boot: a link opened in a tab that is already running must fly there.
     // The app's own writes use replaceState, which fires no hashchange, so this cannot echo.
-    const at = readUrlKeys().at;
+    const keys = readUrlKeys();
+    const at = keys.at;
     const current = typeof ctx.selected === 'function' ? ctx.selected() : null;
+    // A mission's event the same way (ui/missions.js): it selects its own record and sets the clock.
+    if (keys.event) { ctx.wantMissions().then((m) => { if (!m || !m.openEvent(ctx, keys.event)) linkNote(ctx, COPY.mission.unknown, ['event']); }); return; }
     if (at && (!current || current.id !== at)) openAt(ctx, at);
   });
 
@@ -1878,6 +1881,8 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     // Labels ride the same tick as the glyphs they sit over, so the two never drift apart.
     if (ctx.labels && sinceLayerUpdate === 0) ctx.labels.update(t);
     if (ctx.orbitLine) ctx.orbitLine.update(t);
+    // A craft's own path so far (scene/ephpath.js): here only once ui/missions.js has fetched one.
+    if (ctx.ephPath) ctx.ephPath.update(t);
     if (ctx.groundTrack) ctx.groundTrack.update(t);
     if (ctx.orbitRings) {
       const st = ctx.trip && ctx.trip.state;
