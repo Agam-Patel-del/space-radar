@@ -1443,6 +1443,23 @@ html.sr-clean body > *:not(.sr-scene):not(.sr-veil):not(.sr-over-clean) {
   white-space: nowrap;
 }
 
+/* A row that says what it is (ui/searchrows.js): the name, and one quiet line under it. */
+.sr-search__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sr-search__what {
+  font-size: var(--sr-fs-sm);
+  color: var(--sr-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The matched letters. `mark` arrives yellow-on-black from the browser, which is neither in
    the palette nor legible on this panel; ember is the one interactive colour, so it is ember. */
 .sr-search__hit {
@@ -3878,6 +3895,31 @@ html:not(.sr-phone) .sr-explore.is-searching .sr-explore__body {
 
 .sr-next .sr-next__row:first-child { border-top: 0; }
 
+/* The row and, beside it, Add to calendar (ui/next.js): a text action, never a second card. */
+.sr-next .sr-next__row {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.sr-next .sr-next__body { flex: 1 1 auto; min-width: 0; }
+
+.sr-next__cal {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--sp-1);
+  font: inherit;
+  font-size: var(--sr-fs-sm);
+  color: var(--sr-text-dim);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: color var(--sr-fast) var(--sr-ease);
+}
+
+.sr-next__cal:hover { color: var(--sr-ember); }
+
 .sr-next .sr-next__body {
   display: grid;
   gap: 2px;
@@ -5886,7 +5928,8 @@ html.sr-present #sr-side {
      counts as covered: the subject is lifted into the part of the window above the words. */
   min-height: 0;
   max-height: 50vh;
-  padding: var(--sp-5) var(--sp-6) calc(var(--sp-5) + var(--sr-trip-bar) + var(--sp-4));
+  /* A four-line card ended 6 px above the toolbar (internal #419 item 4): a step more under it. */
+  padding: var(--sp-5) var(--sp-6) calc(var(--sp-5) + var(--sr-trip-bar) + var(--sp-6));
   overflow-y: auto;
   pointer-events: auto;
   border-width: 1px 0 0;
@@ -6306,3 +6349,41 @@ html.sr-present .sr-trip__count {
   .sr-mission__link { display: inline-flex; align-items: center; min-height: 44px; }
   .sr-today__debris { min-height: 44px; }
 }
+
+/* Two small targets on a phone that were real (internal #419 item 9): "Sound: off" in What to show
+   was 32 px tall, and Eye / Binoculars / Telescope 42 px wide. */
+html.sr-phone .sr-show__toggle { min-height: 44px; }
+html.sr-phone .sr-skybar__wrap .sr-density__btn { min-width: 44px; min-height: 44px; }
+
+/* A launch within a day (ui/countdown.js): the number in the mono face, its state beside it. */
+.sr-count {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+  align-items: baseline;
+}
+.sr-count[hidden] { display: none; }
+.sr-count__clock {
+  font: 500 var(--sr-fs-body)/1.2 var(--sr-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--sr-ember);
+}
+.sr-count__words {
+  font-size: var(--sr-fs-sm);
+  color: var(--sr-text-dim);
+}
+.sr-card__count { margin: 0 0 var(--sp-3); }
+.sr-card__count .sr-count__clock { font-size: var(--sr-fs-num-sm); }
+
+/* The trip's volume (ui/tripframe.js, public #298): a short native slider beside the sound toggle. */
+.sr-trip__vol {
+  width: 72px;
+  height: 44px;
+  margin: 0 var(--sp-1);
+  accent-color: var(--sr-ember);
+  background: transparent;
+  cursor: pointer;
+}
+.sr-trip__vol[hidden] { display: none; }
+html.sr-phone .sr-trip__vol { width: 56px; }
+.sr-tripsheet__voiceoffer[hidden] { display: none; }

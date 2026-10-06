@@ -912,6 +912,11 @@ export const COPY = {
     autoRegular: 'Regular now; Compact when the window is 800 px tall or less.',
   },
   nextList: {
+    // Add to calendar (public #235, data/ics.js): one .ics file for the row, made in the browser.
+    calendar: 'Calendar',
+    calendarTitle: 'Add “{title}” to your calendar: downloads one .ics file',
+    calendarSaved: 'Saved {file}',
+    calendarFailed: 'The calendar file could not be made',
     // Two rows can name different objects the same way -- CelesTrak calls dozens of stages "SL-8
     // R/B" -- and two identical rows read as a bug. The catalogue number tells them apart.
     sameName: '{name} ({id})',
@@ -1746,6 +1751,12 @@ export const COPY = {
     expand: 'Show card',
     expandTitle: 'Bring the card back (C)',
     soundOn: 'Sound',
+    // The volume beside it (public #298), and the voice offered on a trip's start card (public #446).
+    volume: 'Volume',
+    volumeTitle: 'Volume of the music, the sounds and the voice',
+    volumeValue: '{pct} percent',
+    voiceWill: 'A voice will read this. It is synthetic.',
+    voiceCan: 'A synthetic voice can read this: press Voice.',
     soundOnTitle: 'Music and sounds are on: turn them off (M)',
     soundOffTitle: 'Music and sounds are off: turn them on (M)',
     // Spec 0069: the voice that reads each stop. It is synthetic and the control says so, every
