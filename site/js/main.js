@@ -15,7 +15,7 @@ import { parseFrame } from './propagate/frames.js';
 import { createWorlds, WORLDS, positionOf } from './scene/worlds.js';
 import { createStarfield } from './scene/starfield.js';
 import { createGlyphLayer } from './scene/glyphs.js';
-import { createHeroes, closeUpDistance, SELECTED_PX } from './scene/heroes.js';
+import { createHeroes, closeUpDistance, SELECTED_PX, warmModels } from './scene/heroes.js';
 import { limbFraming, fitDistance, discDistance, litOffset } from './scene/framing.js';
 import { createCameraRig, worldFramingDistance } from './scene/camera.js';
 import { createViewShift, MAX_SHIFT_FRACTION } from './scene/viewshift.js';
@@ -25,7 +25,7 @@ import { COPY, CITIES, t as fill } from './copy/en.js';
 import { LAYERS, loadLayer } from './data/layers.js';
 import * as sources from './data/sources.js';
 import { createSkyView } from './sky/skyview.js';
-import { showCard, hideCard } from './ui/cards.js';
+import { showCard, hideCard, wantCards } from './ui/cardgate.js';
 import { createShell } from './ui/shell.js';
 import { createExplore } from './ui/explore.js';
 import { createRail } from './ui/rail.js';
@@ -33,7 +33,7 @@ import { createTimePill } from './ui/timepill.js';
 import { createSceneNote } from './ui/scenenote.js';
 import { buildIndex, findMatches, LINK_MIN_SCORE } from './ui/search.js';
 import { createDensity } from './ui/density.js';
-import { createTrip } from './ui/trip.js';
+import { createTripGate } from './ui/tripgate.js';
 import { createVeil } from './ui/veil.js';
 import { createAudio } from './audio/engine.js';
 import { createLoader } from './audio/load.js';
@@ -127,7 +127,10 @@ function weatherStandIn(off, layerOn) {
  * them sooner: a ladder or system stage, the search box, a trip or an `at` the map cannot resolve
  * without them (ctx.loadAfterFirstVisit).
  */
-const LATER_LAYERS = new Set(['stars', 'exoplanets']);
+// DEEP SKY TOO (2026-10-06, internal #405): data/dso.json is 116 kB and its layer is `ladderOnly`,
+// drawn from the ladder's rungs like the other two; the ground sky's pictures look their record up
+// when it has landed (sky/groundsky.js), and a trip, a link and the search box already wait here.
+const LATER_LAYERS = new Set(['stars', 'exoplanets', 'deep-sky']);
 const LATER_LAYERS_MS = 3000;
 /** How long after sr:layers-ready the controls hint is imported and may show (ui/keyhint.js): after
  * the later layers and the aurora, when the first view has settled and before a visitor gives up. */
@@ -143,6 +146,16 @@ const SCRUBBER_MS = 4000;
 const TODAY_MS = 4500;
 /** Two snapshots of the view inside this many ms are one move (a tab sets the stage, then the moment). */
 const ONE_MOVE_MS = 120;
+/**
+ * OFF THE FIRST VISIT (2026-10-06, internal #405): the card (ui/cards.js), the trips (ui/trip.js and
+ * data/tours.js) and the model shapes (scene/models.js) are 640 kB that the first screen -- the
+ * Earth and its dots -- does not use. Each is fetched when it is first wanted (a selection, a trip
+ * opened or linked, a camera close enough for geometry), and otherwise WARM_MS after
+ * sr:layers-ready, one after another in an idle moment (requestIdleCallback), so the first tap does not wait for a
+ * download and the trip cards can be planned against today's sky. Not on a connection that asked
+ * to save data: there each waits to be wanted.
+ */
+const WARM_MS = 3500;
 
 export async function boot({ setStatus } = {}) {
   const say = setStatus || (() => {});
@@ -360,7 +373,8 @@ export async function boot({ setStatus } = {}) {
   ctx.veil = createVeil(document.body, {
     reducedMotion: () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches),
   });
-  ctx.trip = createTrip(ctx);
+  // ui/tripgate.js: the trip's own object once a trip is wanted, an idle stand-in until then.
+  ctx.trip = createTripGate(ctx);
   // WHAT A TRIP STOP ADDS TO THE SCENE (2026-10-05): constellation figures that draw themselves
   // (scene/figures3d.js), one measured map over the Earth (scene/earthoverlay.js) and the stop's
   // own shutter. OFF THE FIRST VISIT: both modules are dynamic imports, made when a trip that
@@ -702,6 +716,21 @@ export async function boot({ setStatus } = {}) {
   // OFFLINE_MS after sr:layers-ready, past the keys hint, so nothing it does is a first visit's cost.
   // NEVER IN AN EMBED (public #439): a frame under someone else's headline keeps nothing on the
   // reader's device, and the offline module is not even fetched there.
+  // The card, the trips and the model shapes, when idle (WARM_MS, top of this file). In order of
+  // what a visitor reaches for first; each is a no-op if a tap or a link already fetched it.
+  // In an IDLE moment, as the later layers are: on a machine still busy with its first frames the
+  // timer alone would put 640 kB beside the work that is already late.
+  const warmLater = () => setTimeout(() => {
+    if (typeof navigator !== 'undefined' && shouldSaveData(navigator.connection)) return;
+    const warm = () => wantCards().then(() => ctx.trip.warm()).then(() => warmModels());
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(warm, { timeout: 4000 });
+    else warm();
+  }, WARM_MS);
+  // Not in an embed: a frame under someone else's article shows one object or one trip, and
+  // fetches what that needs when it needs it.
+  if (embed) { /* nothing is warmed */ }
+  else if (window.__srLayersReady) warmLater();
+  else window.addEventListener('sr:layers-ready', warmLater, { once: true });
   const offlineLater = () => setTimeout(() => {
     import('./ui/offline.js').then((m) => m.createOffline(ctx)).catch((e) => console.warn('the offline module did not load', e));
   }, OFFLINE_MS);
@@ -2118,13 +2147,15 @@ function applyUrlState(ctx, st) {
 function openTrip(ctx, st) {
   const tour = ctx.trip.tours().find((x) => x.id === st.trip);
   if (!tour) { linkNote(ctx, COPY.link.unknownTrip, ['trip', 'stop']); return false; }
-  const index = stopIndex(tour, st.stop);
   // Through start(), so the intro card and its count are honest: a link into stop 3 still shows
   // "10 stops, about four minutes" and Start -- a decision rather than an ambush (spec 0025 §4) --
   // and Start then flies to stop 3 (ui/trip.js jumpTo). A trip that cannot reach its own minimum
   // today is refused by start() and the panel row says why; nothing to add here.
+  // The stop is looked up once start() has resolved: until then ctx.trip.tours() is the index, which
+  // has no stops (ui/tripgate.js).
   ctx.trip.start(tour.id).then((plan) => {
     if (!plan || plan.offerable === false) return;
+    const index = stopIndex(ctx.trip.tours().find((x) => x.id === tour.id), st.stop);
     if (index > 0) ctx.trip.jumpTo(index);
     // An embed has no intro card to press Start on: the trip plays (ui/embed.js).
     if (ctx.embed) ctx.trip.play();
