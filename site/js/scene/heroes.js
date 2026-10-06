@@ -15,7 +15,7 @@
 // position, to the metre. Only its apparent size is chosen.
 
 import * as THREE from '../../vendor/three.module.min.js';
-import { modelFor, updateModelAttitude, setSunDirection, disposeModels, attachOddityModels, builderKlass } from './models.js';
+import { modelFor, updateModelAttitude, setSunDirection, setPlanetShine, disposeModels, attachOddityModels, builderKlass } from './models.js';
 import { realModelFor, loadRealModel } from './realmodels.js';
 import { propagate } from '../propagate/index.js';
 import { stage } from './stage.js';
@@ -117,7 +117,7 @@ function unitReachOf(obj) {
   obj.updateMatrixWorld(true);
   _reachBox.makeEmpty();
   obj.traverse((n) => {
-    if (!n.isMesh) return;
+    if (!n.isMesh || n.userData.noReach) return; // a contact shadow is not part of the model
     // STRICTLY BELOW THE ROOT. A hero is created invisible and faded in, so testing the root's own
     // visibility skipped every mesh, left the box empty and silently returned the 0.5 fallback --
     // which is how the ISS came out 20 km inside the Earth with the cap apparently working.
@@ -312,6 +312,9 @@ const FADE_MS = 200;
 const _v = new THREE.Vector3();
 const _camPos = new THREE.Vector3();
 const _climb = new THREE.Vector3();
+const _sunHere = new THREE.Vector3();
+const _sunLocal = new THREE.Vector3();
+const _q = new THREE.Quaternion();
 const _ground = new THREE.Vector3();
 
 /**
@@ -371,6 +374,102 @@ export function standOnGround(obj) {
   return obj;
 }
 
+/**
+ * A CONTACT SHADOW UNDER A THING THAT STANDS ON THE GROUND (issue #268, spec 0057 task 5).
+ *
+ * WHY. A lander had nothing under it, so it read as pasted onto the picture of the ground rather
+ * than as standing on it, and a model whose feet were a pixel off looked like it was hovering.
+ * The eye settles "is it touching?" from the dark patch where the feet meet the ground, not
+ * from the feet.
+ *
+ * WHAT IT IS. One soft disc, a child of the model so it is sized, faded and thrown away with it,
+ * lying on the model's own ground plane (y = 0: standOnGround puts the lowest point there and the
+ * procedural landers are built that way). It is the cheap half of that issue: a blob, not the
+ * projected silhouette, and no shadow map -- the scene has none. It leans away from the Sun and
+ * goes faint when the Sun is below the local horizon (groundShadowPose), because a hard black
+ * patch under a lander in the lunar night would be a shadow nothing is casting. Illustrative.
+ *
+ * LIFTED 1.2 % OF THE MODEL'S SIZE, AND THAT NUMBER IS ARITHMETIC. A hero is drawn far larger than
+ * life, so the ground under it is a visibly curved sphere: across a disc of radius r the surface
+ * falls away by r^2 / 2R. heroScale's caps keep a model's reach under about a fifth of its world's
+ * radius, where that sag is 1 % of the model. Lower than that and the middle of the disc is under
+ * the ground.
+ */
+const SHADOW_NAME = 'contact-shadow';
+const SHADOW_LIFT = 0.012;
+const SHADOW_OPACITY = 0.5;
+let _shadowGeometry = null;
+function shadowGeometry() {
+  if (_shadowGeometry) return _shadowGeometry;
+  const g = new THREE.CircleGeometry(1, 32);
+  g.rotateX(-Math.PI / 2);
+  // One shared geometry, never disposed with a model: models.js disposeModels frees every
+  // geometry under a released model, and three.js uploads it again on the next draw.
+  _shadowGeometry = g;
+  return g;
+}
+// The falloff, as an alpha map: dark in the middle, gone by the rim. A texture on a BUILT-IN
+// material and not a few lines of ShaderMaterial, because the renderer uses a logarithmic depth
+// buffer (scene/renderer.js) and a custom shader without the logdepthbuf chunks z-fights every
+// built-in material around it -- the ground it lies on first of all.
+let _shadowAlpha = null;
+function shadowAlpha() {
+  if (_shadowAlpha) return _shadowAlpha;
+  const N = 64;
+  const px = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const r = Math.hypot((x + 0.5) / N - 0.5, (y + 0.5) / N - 0.5) * 2;
+    const t = Math.min(1, Math.max(0, (r - 0.25) / 0.75));
+    const a = 1 - t * t * (3 - 2 * t);
+    const v = Math.round(a * a * 255);
+    px.set([v, v, v, 255], (y * N + x) * 4);
+  }
+  _shadowAlpha = new THREE.DataTexture(px, N, N, THREE.RGBAFormat);
+  _shadowAlpha.magFilter = THREE.LinearFilter;
+  _shadowAlpha.minFilter = THREE.LinearFilter;
+  _shadowAlpha.needsUpdate = true;
+  return _shadowAlpha;
+}
+export function addContactShadow(obj, reach = 0.5) {
+  if (!obj || obj.getObjectByName(SHADOW_NAME)) return null;
+  // One material per model, like every other material on a hero: the fade-in in update() writes
+  // material.opacity, up to `baseOpacity`.
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x000000, alphaMap: shadowAlpha(), transparent: true, depthWrite: false, opacity: SHADOW_OPACITY,
+  });
+  material.userData.baseOpacity = SHADOW_OPACITY;
+  material.userData.perModel = true;
+  const disc = new THREE.Mesh(shadowGeometry(), material);
+  disc.name = SHADOW_NAME;
+  disc.userData.reach = reach;
+  disc.userData.noReach = true; // unitReachOf: a shadow is not part of how far the model reaches
+  disc.renderOrder = -1;        // under its own model
+  disc.scale.setScalar(Math.max(0.3, reach) * 1.15);
+  disc.position.y = SHADOW_LIFT;
+  obj.add(disc);
+  return disc;
+}
+
+/**
+ * Where the contact shadow lies and how dark it is, from the Sun's direction in the MODEL's frame
+ * (+Y is the local vertical). Pure, and exported for tests/test_landing_sites.mjs.
+ * @returns {{x:number, z:number, opacity:number}} offset in units of the model's reach
+ */
+export function groundShadowPose(sunLocal) {
+  const up = Math.max(-1, Math.min(1, sunLocal.y));
+  const flat = Math.hypot(sunLocal.x, sunLocal.z) || 1;
+  // A low Sun throws it further: 0 overhead, 0.35 of the reach at the horizon.
+  const lean = 0.35 * (1 - Math.max(0, up));
+  // Night: the patch under the feet stays as a faint occlusion, a third as dark.
+  const day = Math.min(1, Math.max(0, (up + 0.1) / 0.3));
+  return { x: (-sunLocal.x / flat) * lean, z: (-sunLocal.z / flat) * lean, opacity: SHADOW_OPACITY * (1 / 3 + (2 / 3) * day) };
+}
+
+/** A landing site's vehicle, standing on a world: the things that get a contact shadow. */
+function standsOnBareGround(record, obj) {
+  return !!(record && record.meta && record.meta.siteShape && obj && obj.userData.attitude === 'up');
+}
+
 export function createHeroes(scene, ctx) {
   const drawnCentre = (id, out) => (ctx.worlds && ctx.worlds.drawnPositionOf ? ctx.worlds.drawnPositionOf(id, out) : null);
   // The other worlds on this stage, as drawn, gathered once a frame for capForNeighbour.
@@ -386,12 +485,29 @@ export function createHeroes(scene, ctx) {
       const slot = _otherPool[n] || (_otherPool[n] = { centre: new THREE.Vector3(), radius: 0 });
       if (!w.drawnPositionOf(world.id, slot.centre)) continue;
       slot.radius = w.drawnRadiusUnits(world.id);
+      slot.id = world.id;
       if (!(slot.radius > 0)) continue;
       _others.push(slot); n++;
     }
     return _others;
   }
   const nearAlt = (c) => (altitudeCapApplies(c.record) ? nearestAltitude(c.pos, _others) : Infinity);
+  // The stage's own world and the others, by clearance above the drawn surface. The Sun is never
+  // the answer: it is the key light, and PLANET_SHINE has no row for it.
+  const _stageWorld = { id: '', centre: new THREE.Vector3(), radius: 0 };
+  function nearestWorldToCamera(camera) {
+    let near = null, best = Infinity;
+    if (stage.worldId !== 'sun' && stageRadiusUnits() > 0) {
+      _stageWorld.id = stage.worldId; _stageWorld.radius = stageRadiusUnits();
+      near = _stageWorld; best = camera.position.length() - _stageWorld.radius;
+    }
+    for (const o of _others) {
+      if (o.id === 'sun') continue;
+      const a = camera.position.distanceTo(o.centre) - o.radius;
+      if (a < best) { best = a; near = o; }
+    }
+    return near;
+  }
   const root = new THREE.Group();
   root.name = 'heroes';
   // Heroes draw after the glyph layers so a model sits over its own dot rather than behind it.
@@ -400,6 +516,7 @@ export function createHeroes(scene, ctx) {
 
   /** The last update()'s clock, so drawnOpacity() reads the same fade the frame drew. */
   let lastTMs = 0;
+  let fadeNow = 0; // milliseconds of frames drawn: what the fade-in counts (see update)
   /** id -> {obj, record, fadeStart} */
   const live = new Map();
   // The adaptive pool (nextHeroCap above): the cap the device has earned, how long the camera has
@@ -439,6 +556,7 @@ export function createHeroes(scene, ctx) {
     attachOddityModels(obj, record.id);
     root.add(obj);
     const entry = { obj, record, fadeStart: null, upgraded: false, reach: unitReachOf(obj) };
+    if (standsOnBareGround(record, obj)) addContactShadow(obj, entry.reach);
     live.set(record.id, entry);
 
     // If NASA publishes this exact object, fetch it and swap it in when it arrives. The procedural
@@ -462,6 +580,7 @@ export function createHeroes(scene, ctx) {
         // after the line below would return a reach already multiplied by the drawn scale -- and
         // the clearance cap would then be computed from a number in the wrong units entirely.
         entry.reach = unitReachOf(clone);
+        if (standsOnBareGround(record, clone)) addContactShadow(clone, entry.reach);
         clone.position.copy(entry.obj.position);
         clone.scale.copy(entry.obj.scale);
         clone.quaternion.copy(entry.obj.quaternion);
@@ -596,7 +715,14 @@ export function createHeroes(scene, ctx) {
   }
 
   function update(tMs, at = {}) {
-    lastTMs = tMs;
+    // THE FADE RUNS ON FRAMES, NOT ON THE CLOCK. It was `tMs`, which is the app's clock: with time
+    // paused that never advances, so a model acquired while paused stayed at opacity 0 for good --
+    // pause, fly to a lander, and there is a dot where the lander should be. MEASURED in headless
+    // Chrome on 2026-10-05 (clock.setPaused(true), then select: six models, six at opacity 0). At
+    // 1000x it was the other failure, a fade over in one frame. `frameMs` is the real frame
+    // length main.js already passes (and the film's virtual one, so a rendered trip is unchanged).
+    fadeNow += Number.isFinite(at.frameMs) && at.frameMs > 0 ? Math.min(at.frameMs, 100) : 16;
+    lastTMs = fadeNow;
     const camera = ctx.camera;
     if (!camera) return;
 
@@ -637,12 +763,35 @@ export function createHeroes(scene, ctx) {
       return;
     }
 
-    const sun = ctx.worlds && ctx.worlds.sunDirScene ? ctx.worlds.sunDirScene() : null;
-    if (sun) setSunDirection(sun);
+    let sun = ctx.worlds && ctx.worlds.sunDirScene ? ctx.worlds.sunDirScene() : null;
 
     const want = candidates(tMs);
     const wanted = new Set(want.map((c) => c.record.id));
-    for (const id of [...live.keys()]) if (!wanted.has(id)) release(id);
+
+    // WHICH WORLD LIGHTS THE MODELS: the one whose drawn surface is nearest the camera. After
+    // candidates(), because that is what gathers the other worlds.
+    //
+    // It decides two things, and the second was simply wrong before 2026-10-05. (1) Planet-shine
+    // (models.js setPlanetShine: one world a frame, because the uniforms are shared). (2) WHERE
+    // THE SUN IS. The models were lit from the direction of the Sun as seen from the STAGE's
+    // origin. Every landing site is reached on the Earth's stage, and from Mars the Sun is tens of
+    // degrees from where the Earth sees it -- MEASURED in headless Chrome that day: InSight and
+    // Curiosity stood in full sunlight, lit from overhead, on a Mars that was black with night all
+    // the way to the horizon. worlds.js already works out the Sun's direction at each world for
+    // that world's own shader, so the models beside a world now use the same vector, and the one
+    // directional light that built-in materials read is turned to match (worlds.update points it
+    // from the stage origin again at the top of every frame, so this never sticks).
+    const lit = nearestWorldToCamera(camera);
+    if (lit && lit.id !== stage.worldId && ctx.worlds.meshFor) {
+      const mesh = ctx.worlds.meshFor(lit.id);
+      const u = mesh && mesh.material && mesh.material.uniforms && mesh.material.uniforms.uSunDir;
+      if (u && u.value && u.value.lengthSq() > 0) sun = _sunHere.copy(u.value).normalize();
+    }
+    if (sun) {
+      setSunDirection(sun);
+      if (ctx.worlds && ctx.worlds.light) ctx.worlds.light.position.copy(sun).multiplyScalar(1e5);
+    }
+    setPlanetShine(lit ? lit.id : null, lit ? lit.centre : null, lit ? lit.radius : 0);
 
     // pixels = (size / distance) * (viewportHeight / 2) * f, with f = 1 / tan(fovY / 2).
     const f = camera.projectionMatrix.elements[5];
@@ -683,14 +832,25 @@ export function createHeroes(scene, ctx) {
       nadirOf(c.record, c.pos, drawnCentre, _v);
       updateModelAttitude(obj, c.record, sun, _v);
 
+      // The contact shadow leans away from the Sun, in the model's own frame (groundShadowPose).
+      const shadow = sun && obj.userData.attitude === 'up' ? obj.getObjectByName(SHADOW_NAME) : null;
+      if (shadow) {
+        _sunLocal.set(sun.x, sun.y, sun.z).applyQuaternion(_q.copy(obj.quaternion).invert());
+        const pose = groundShadowPose(_sunLocal);
+        const r = shadow.userData.reach || 0.5;
+        shadow.position.set(pose.x * r, SHADOW_LIFT, pose.z * r);
+        shadow.material.userData.baseOpacity = pose.opacity;
+        if (entry.fadeStart == null) shadow.material.opacity = pose.opacity;
+      }
+
       if (!obj.visible) {
         obj.visible = true;
-        entry.fadeStart = tMs;
+        entry.fadeStart = fadeNow;
       }
       // Fade by opacity where the material allows it; a model that pops is the tell that this is
       // a swap rather than an approach.
       if (entry.fadeStart != null) {
-        const k = Math.min(1, Math.abs(tMs - entry.fadeStart) / FADE_MS);
+        const k = Math.min(1, Math.abs(fadeNow - entry.fadeStart) / FADE_MS);
         obj.traverse((n) => {
           if (n.material && n.material.transparent !== undefined) {
             // A material that was DESIGNED translucent -- the additive plume at 0.55 -- keeps
