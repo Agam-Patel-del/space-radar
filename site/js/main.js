@@ -19,8 +19,8 @@ import { createHeroes, closeUpDistance, SELECTED_PX, warmModels } from './scene/
 import { limbFraming, fitDistance, discDistance, litOffset, groundDistanceKm, nightGroundPose, openingPlan, OPENING_KEY } from './scene/framing.js';
 import { createCameraRig, worldFramingDistance } from './scene/camera.js';
 import { createViewShift, MAX_SHIFT_FRACTION, PILL_GAP_PX } from './scene/viewshift.js';
-import { readMoment, writeMoment, bootLink, laterLink, read as readUrlKeys, write as writeUrlState, clear as clearUrlState, stopIndex } from './ui/urlstate.js';
-import { guessObserver } from './sky/guessplace.js';
+import { readMoment, writeMoment, bootLink, laterLink, linkChange, read as readUrlKeys, write as writeUrlState, clear as clearUrlState, stopIndex } from './ui/urlstate.js';
+import { guessObserver, roundPlace } from './sky/guessplace.js';
 import { COPY, CITIES, t as fill } from './copy/en.js';
 import { LAYERS, loadLayer } from './data/layers.js';
 import * as sources from './data/sources.js';
@@ -222,7 +222,9 @@ export async function boot({ setStatus } = {}) {
     deselect,
     flyToRecord: (record, ms) => flyToRecord(record, ms),
     get observer() { return observer; },
-    setObserver: (o) => { observer = o; window.dispatchEvent(new CustomEvent('sr:observer', { detail: o })); },
+    // The one door a place comes in by. The browser's own answer is rounded here as well as where it
+    // is read (ui/place.js), so no caller can hand the app a precise position (spec 0051 req 3).
+    setObserver: (o) => { observer = o && o.source === 'geolocation' ? roundPlace(o) : o; window.dispatchEvent(new CustomEvent('sr:observer', { detail: observer })); },
     get moment() { return moment; },
     setMoment,
     isSecure: window.isSecureContext === true,
@@ -289,8 +291,12 @@ export async function boot({ setStatus } = {}) {
     writeUrlState({ exp: mode === DEFAULT_EXPOSURE ? null : mode });
     window.dispatchEvent(new CustomEvent('sr:exposure', { detail: { mode } }));
   });
+  // The canvas says what is selected (public #315): its name is the page's own sentence until then.
+  const stageEl = document.getElementById('stage');
+  const sceneName = stageEl ? stageEl.getAttribute('aria-label') : '';
   window.addEventListener('sr:select', (e) => {
     const record = e && e.detail;
+    if (stageEl) stageEl.setAttribute('aria-label', record && record.name ? fill(COPY.app.sceneSelected, { name: record.name }) : sceneName);
     if (record && record.klass === 'dso') ctx.wantNebulae().then((n) => { if (n) n.want(record.id); });
     else if (ctx.nebulae) ctx.nebulae.want(null);
   });
@@ -1644,14 +1650,30 @@ export async function boot({ setStatus } = {}) {
   });
   window.addEventListener('hashchange', () => {
     setMoment(readMomentFromHash(), { silent: true });
-    // `at` too, not only at boot: a link opened in a tab that is already running must fly there.
-    // The app's own writes use replaceState, which fires no hashchange, so this cannot echo.
+    // THE WHOLE VIEW, not only at boot and not only `at` (public #331): Back, Forward or an address
+    // pasted over this one is a link opened in a tab that is already running, and the clock, the
+    // stage, the trip and its stop are as much the view as what is selected. ui/urlstate.js
+    // linkChange decides; this carries it out. The app's own writes use replaceState, which fires
+    // no hashchange, so this cannot echo.
     const keys = readUrlKeys();
-    const at = keys.at;
     const current = typeof ctx.selected === 'function' ? ctx.selected() : null;
-    // A mission's event the same way (ui/missions.js): it selects its own record and sets the clock.
-    if (keys.event) { ctx.wantMissions().then((m) => { if (!m || !m.openEvent(ctx, keys.event)) linkNote(ctx, COPY.mission.unknown, ['event']); }); return; }
-    if (at && (!current || current.id !== at)) openAt(ctx, at);
+    const running = ctx.trip && ctx.trip.state && ctx.trip.state.phase !== 'idle' ? ctx.trip.state : null;
+    const plan = linkChange(keys, { at: current ? current.id : null, trip: running ? running.tourId : null, live: clock.mode === 'live' });
+    if (!plan) return;
+    if (plan.clock && plan.clock.live) clock.live();
+    else if (plan.clock) { clock.goTo(plan.clock.goTo); if (clock.rates().includes(plan.clock.rate)) clock.setRate(plan.clock.rate); }
+    if (plan.stage && STAGES[plan.stage]) { if (stage.worldId !== plan.stage) ctx.setStage(plan.stage); } else if (plan.stage) linkNote(ctx, COPY.link.unknownStage, ['stage']);
+    if (plan.trip && plan.trip.start) { openTrip(ctx, keys); return; }
+    if (plan.trip && plan.trip.jump) {
+      const index = stopIndex(ctx.trip.tours().find((x) => x.id === running.tourId), plan.trip.jump);
+      if (index >= 0 && index !== running.index) ctx.trip.jumpTo(index);
+      return;
+    }
+    if (plan.trip) ctx.trip.stop();
+    // A mission's event (ui/missions.js): it selects its own record and sets the clock.
+    if (plan.event) { ctx.wantMissions().then((m) => { if (!m || !m.openEvent(ctx, plan.event)) linkNote(ctx, COPY.mission.unknown, ['event']); }); return; }
+    if (plan.at && plan.at.open) openAt(ctx, plan.at.open);
+    else if (plan.at) ctx.deselect();
   });
 
   // THE URL IS THE STATE (spec 0017's rule, spec 0032's keys). Two more writers beside the moment,

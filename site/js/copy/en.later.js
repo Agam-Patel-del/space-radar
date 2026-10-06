@@ -138,11 +138,11 @@ Object.assign(COPY, {
     bandsTitle: 'By height',
     bands: {
       low: 'Under 600 km',
-      crowded: '600 to 1 000 km',
-      upper: '1 000 to 2 000 km',
-      medium: '2 000 to 34 000 km',
-      geo: 'Around 36 000 km',
-      beyond: 'Beyond 37 600 km',
+      crowded: '600 to 1 000 km',
+      upper: '1 000 to 2 000 km',
+      medium: '2 000 to 34 000 km',
+      geo: 'Around 36 000 km',
+      beyond: 'Beyond 37 600 km',
       stretched: 'Stretched orbits',
     },
     bandAria: '{band}: {total} in all. {debris} debris, {rocket} rocket bodies, {dead} dead satellites, {working} working.',
@@ -416,6 +416,8 @@ Object.assign(COPY, {
     inferredNoElements: 'position worked out rather than measured',
     // A storm's centre is measured, at one moment; this is the half of the line that says which.
     stormAdvisory: 'its centre at the {time} UTC advisory, {ago}; a storm moves, so it has moved since',
+    // With the advisory's date, when the clock stands on another UTC day (public #330).
+    stormAdvisoryDated: 'its centre at the {time} UTC advisory of {date}, {ago}; a storm moves, so it has moved since',
     illustrative: 'drawn to show where it goes; the real track is not public',
     // A dot of the "All tracked debris" layer: its orbit's height and tilt are the catalogue's.
     placeIllustrative: 'its real orbit, from CelesTrak’s catalogue, at a made-up place along it; we hold no current elements for it',
@@ -528,8 +530,9 @@ Object.assign(COPY, {
     // One line each in the sidebar (spec 0061 req 11).
     placeGuess: 'Near {place}, guessed from your time zone',
     placeSet: 'From {place}',
-    // The browser gave the coordinates and no name: the place is the visitor's own.
-    placeMine: 'From your place',
+    // The browser gave the coordinates and no name: the place is the visitor's own, and "near"
+    // because the app keeps it only to a tenth of a degree, about 11 km (spec 0051 req 3).
+    placeMine: 'From near your place',
     placeShared: 'From {place}, shared with you',
     noPlace: 'Set where you are to see what passes over.',
     coords: '{lat}, {lon}',
@@ -981,7 +984,7 @@ Object.assign(COPY, {
         miranda: 'the smallest of Uranus’s five big moons, with canyons up to 12 times the Grand Canyon’s depth',
         ariel: 'the brightest and youngest-looking of Uranus’s five big moons, cut across by fault valleys',
         umbriel: 'the darkest of Uranus’s big moons, reflecting about a fifth of the light that reaches it',
-        titania: 'Uranus’s largest moon, neutral grey, split by fault valleys nearly 1 600 km long',
+        titania: 'Uranus’s largest moon, neutral grey, split by fault valleys nearly 1 600 km long',
         oberon: 'Uranus’s second largest moon, dark, cratered, and carrying a mountain 6 km high',
       },
     },
