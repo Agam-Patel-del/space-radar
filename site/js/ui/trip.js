@@ -61,7 +61,9 @@ import { write as writeUrl, clear as clearUrl } from './urlstate.js';
 import { nextEvent } from '../data/events.js';
 import { guessObserver } from '../sky/guessplace.js';
 import { SELECTED_PX } from '../scene/heroes.js';
-import { COPY, CITIES, t, fmt } from '../copy/en.js';
+import { lookTarget, tonightMs, planetTonight } from '../sky/lookfor.js';
+import { azimuthInWords, altitudeInWords } from '../sky/skyview.js';
+import { COPY, CITIES, t, fmt, timeText } from '../copy/en.js';
 
 const DEG = Math.PI / 180;
 
@@ -289,7 +291,10 @@ export function createTrip(ctx) {
     // The stop's lens (`zoom:` on a sky stop): under 1 is a wider angle, for a figure too tall for
     // the camera's 45 degrees. main.js eases the camera's zoom to it and back to 1 on leave.
     zoom: 1,
-    wants: { figures: false, overlay: false },
+    wants: { figures: false, overlay: false, spaceWeather: false },
+    // The stop on screen is seen from the visitor's own ground (`look:`, 2026-10-06): the sky view
+    // has the camera, and the frame and the present mode read this to say so.
+    ground: false,
     index: -1,
     count: 0,
     // The resolved stops' ids and titles, in order: the intro sheet lists them (spec 0061 task 7).
@@ -502,6 +507,7 @@ export function createTrip(ctx) {
     stepUpTween();
     refreshNote();
     stepStretch();
+    trackSeenFrom();
     // A timer from a superseded generation is dropped rather than fired: a user-initiated jump
     // must not be overtaken by the dwell of the stop it left.
     timers = timers.filter((timer) => timer.gen === gen);
@@ -1228,9 +1234,16 @@ export function createTrip(ctx) {
     );
     // `over: [lat, lon]` on a stop about the Earth: the camera goes above that place, whatever the
     // light is doing there, because the stop is about what is on the ground under it.
-    if (Array.isArray(entry.stop.over) && subject.kind === 'world' && subject.id === 'earth') {
-      const above = overAngles(entry.stop.over, targetScene, tMs);
+    // Since 2026-10-06 on any world that has a ground to stand over (Olympus Mons on Mars).
+    if (Array.isArray(entry.stop.over) && subject.kind === 'world') {
+      const above = overAngles(entry.stop.over, targetScene, tMs, subject.id);
       if (above) angles = above;
+    }
+    // `seen_from: earth` on a stop about the Moon: the camera goes on the line from the subject to
+    // that world, so the face shown is the one that world sees. tick() keeps it there (trackSeenFrom).
+    if (entry.stop.seen_from) {
+      const from = seenFromAngles(entry.stop.seen_from, targetScene, tMs);
+      if (from) angles = from;
     }
     if (!angles && subject.kind === 'world' && subject.id === 'sun' && stage.worldId === 'sun') {
       angles = { azimuth: rig.state.azimuth || 0, polar: SUN_OVERVIEW_POLAR };
@@ -1262,10 +1275,10 @@ export function createTrip(ctx) {
   }
 
   /** The rig's angles for a camera straight above a place on the Earth, in the up it arrives with. */
-  function overAngles(over, targetScene, tMs) {
+  function overAngles(over, targetScene, tMs, worldId = 'earth') {
     if (!isNum(over[0])) return null;
     const at = (latDeg, lonDeg) => {
-      const p = fixed({ id: 'over', propagator: 'fixed', frame: 'earth-fixed', fixed: { latDeg, lonDeg, altKm: 0 } }, tMs);
+      const p = fixed({ id: 'over', propagator: 'fixed', frame: `${worldId}-fixed`, fixed: { latDeg, lonDeg, altKm: 0 } }, tMs);
       return p ? stage.toScene(p, p.frame, tMs) : null;
     };
     let ground = null;
@@ -1284,13 +1297,43 @@ export function createTrip(ctx) {
       ground = new THREE.Vector3().copy(targetScene).addScaledVector(away, Math.cos(lat)).addScaledVector(north, Math.sin(lat));
     } else if (isNum(over[1])) ground = at(over[0], over[1]);
     if (!ground) return null;
-    _b1.copy(ground).sub(targetScene);
+    return towardAngles(ground, targetScene);
+  }
+
+  /** The rig's angles for a camera on the line from the subject towards `point`, in the visitor's up. */
+  function towardAngles(point, targetScene) {
+    _b1.copy(point).sub(targetScene);
     if (_b1.lengthSq() < 1e-30) return null;
     _b1.normalize();
     const up = (run && run.savedUp) || ctx.camera.up;
     _uq.setFromUnitVectors(_b2.copy(up).normalize(), Y_UP);
     _b1.applyQuaternion(_uq);
     return { azimuth: Math.atan2(_b1.x, _b1.z), polar: Math.acos(clamp(_b1.y, -1, 1)) };
+  }
+
+  /** `seen_from:` -- the angles that put the camera between the subject and that world. */
+  function seenFromAngles(worldId, targetScene, tMs) {
+    const w = worldSubject(worldId);
+    const p = w ? w.position(tMs) : null;
+    return p ? towardAngles(p, targetScene) : null;
+  }
+
+  /**
+   * KEEP A `seen_from:` STOP ON ITS LINE WHILE THE CLOCK RUNS (2026-10-06, the Moon's phases). The
+   * rig's angles are fixed against the stars, and the stop runs a week in twenty seconds: held
+   * still, the camera would watch the Moon from one side while the Earth went round behind it, and
+   * the lit part would never change, because the phases are what the EARTH sees. So the angles are
+   * worked out again every frame of the settle and the dwell. Not while paused: a hand on the
+   * camera has it. The rig says no during a flight, which owns both angles.
+   */
+  function trackSeenFrom() {
+    if (!run || state.index < 0 || (state.phase !== 'dwell' && state.phase !== 'settle')) return;
+    const entry = run.stops[state.index];
+    if (!entry || !entry.stop.seen_from || !entry.subject || typeof rig.setAngles !== 'function') return;
+    const tMs = ctx.clock.now();
+    const at = entry.subject.position(tMs);
+    const a = at ? seenFromAngles(entry.stop.seen_from, at, tMs) : null;
+    if (a) rig.setAngles(a.azimuth, a.polar);
   }
 
   /**
@@ -1364,7 +1407,8 @@ export function createTrip(ctx) {
       lastRecord = null;
       // `follow` before the card, so the camera holds the place (a visitor's ground turns with the
       // Earth) even when painting the card fails -- as it does in node, where there is no document.
-      rig.follow(() => entry.subject.position(ctx.clock.now()));
+      // Not from the ground itself (`look:`): the sky view has the camera, and there is nothing to ride.
+      if (!(run && run.ground)) rig.follow(() => entry.subject.position(ctx.clock.now()));
       showCard(null, ctx, { lead });
     }
   }
@@ -1393,9 +1437,18 @@ export function createTrip(ctx) {
         clouds: () => (ctx.liveClouds && ctx.liveClouds.line ? ctx.liveClouds.line(ctx.clock.now()) : ''),
         aurora: () => (ctx.aurora && ctx.aurora.line ? ctx.aurora.line(ctx.clock.now()) : ''),
         lightning: () => (ctx.weather && ctx.weather.line ? ctx.weather.line('earth', ctx.clock.now()) : ''),
+        // 2026-10-06. The season on the world the stop is about (Mars: scene/weather, by the date
+        // on the clock); NOAA's reading of the Earth's magnetic weather, with its age (main.js
+        // fetches it when a trip that wants it reaches its intro); and where one planet is in the
+        // visitor's own sky tonight (sky/lookfor.js).
+        season: () => (ctx.weather && ctx.weather.line ? ctx.weather.line(subject.id, ctx.clock.now()) : ''),
+        'space-weather': () => (typeof ctx.spaceWeatherLine === 'function' ? ctx.spaceWeatherLine() : ''),
+        tonight: () => tonightLine(entry),
       }[live];
       if (say) return () => { try { return say() || ''; } catch { return ''; } };
     }
+    // A stop seen from the visitor's own ground says what it turned to, and where that is.
+    if (entry.stop.look && run && run.ground) return () => { try { return lookLine(entry) || ''; } catch { return ''; } };
     if (subject.kind === 'observer') {
       const line = subject.source === 'guess'
         ? t(COPY.trip.observerGuess, { place: subject.name })
@@ -1429,6 +1482,77 @@ export function createTrip(ctx) {
       const km = Math.round((a.distanceTo(b) * stage.unitKm) / 10) * 10;
       return t(COPY.trip.stationFromYou, { km: fmt.int(km) });
     };
+  }
+
+  /**
+   * `live_note: tonight` under a stop about a planet: when and where it is in the visitor's own
+   * sky in the coming dark, or why it is not. Worked out once per stop (a hundred solves) from the
+   * clock the visitor had when the trip began, which is the "tonight" every stop of the trip means.
+   */
+  function tonightLine(entry) {
+    const place = placeOf();
+    const subject = entry.subject;
+    if (!place || !subject) return '';
+    if (!entry.tonight) {
+      const base = run && run.savedClock && isNum(run.savedClock.t) ? run.savedClock.t : ctx.clock.now();
+      entry.tonight = planetTonight(subject.id, place, tonightMs(place, base)) || { none: true };
+    }
+    const p = entry.tonight;
+    if (p.none) return '';
+    const T = COPY.trip;
+    const where = { place: place.name || T.yourPlace, name: subject.name };
+    if (p.why === 'glare') return t(T.tonightGlare, where);
+    if (!p.visible) return t(T.tonightDown, where);
+    return t(T.tonightUp, {
+      ...where,
+      begin: timeText.hhmm(p.fromMs),
+      end: timeText.hhmm(p.untilMs),
+      time: timeText.hhmm(p.bestMs),
+      alt: altitudeInWords(p.bestAltDeg),
+      az: azimuthInWords(p.bestAzDeg),
+    });
+  }
+
+  /**
+   * The line under a stop seen from the ground (`look:`): what the view turned to and where it is,
+   * read from the clock each time (the Moon climbs while the card is up), or that it is not up.
+   */
+  function lookLine(entry) {
+    const place = placeOf();
+    const look = entry.stop.look;
+    if (!place || !look) return '';
+    const T = COPY.trip;
+    const pass = entry.event && entry.event.pass ? entry.event.pass : null;
+    if (look.pass === true) {
+      if (!pass) return T.lookNoPass;
+      const record = (entry.event && entry.event.record) || pass.record;
+      if (!record) return T.lookNoPass;
+      // The same sentence the object card and the station trip's own pass stop use.
+      const see = seeItLine(record, ctx, { frame: record.frame, ok: true, tMs: entry.event.t, worldId: 'earth' },
+        { state: 'ok', pass: { ...pass, sunlit: null } });
+      return [see, pass.visible ? T.passNight : T.passDay].join(' ');
+    }
+    const aim = lookTarget(look, place, ctx.clock.now(), pass);
+    if (!aim) return '';
+    const where = { alt: altitudeInWords(aim.altDeg), az: azimuthInWords(aim.azDeg) };
+    if (aim.daylight) return T.lookDaylight;
+    if (aim.kind === 'world' && aim.id === 'moon') {
+      if (aim.up) return t(T.lookMoonUp, { ...where, pct: fmt.int(aim.percent ?? 0) });
+      return isNum(aim.riseMs) ? t(T.lookMoonDown, { time: timeText.hhmm(aim.riseMs) }) : T.lookMoonDownNoRise;
+    }
+    if (aim.kind === 'world') {
+      const w = worldById.get(aim.id);
+      const name = w ? w.display : aim.id;
+      return aim.up ? t(T.lookWorldUp, { ...where, name }) : t(T.lookWorldDown, { name });
+    }
+    if (aim.kind === 'planet') {
+      if (!aim.up) return T.lookNoPlanet;
+      const w = worldById.get(aim.id);
+      return t(T.lookPlanet, { ...where, name: w ? w.display : aim.id });
+    }
+    if (aim.kind === 'star') return aim.up ? t(T.lookStar, { ...where, name: aim.name }) : '';
+    if (aim.kind === 'figure') return aim.up ? t(T.lookFigure, { ...where, name: aim.name }) : T.lookNoFigure;
+    return '';
   }
 
   // --- the machine ------------------------------------------------------------------------
@@ -1576,6 +1700,16 @@ export function createTrip(ctx) {
   function resolveStopTime(time, nowMs) {
     lastEvent = null;
     if (time === 'now') return nowMs;
+    // `tonight` (2026-10-06): the coming dark at the visitor's place, or now when it is dark
+    // already (sky/lookfor.js). The place is the trip's own, the guess included, so the instant and
+    // the line that names the place are about the same ground.
+    if (time === 'tonight') {
+      const ms = tonightMs(placeOf(), nowMs);
+      return isNum(ms) ? ms : null;
+    }
+    // `daylight` needs the stop's own ground (daylightMs, which applyStopTime asks); asked without
+    // one, when the trip is planned, it always resolves.
+    if (time === 'daylight') return nowMs;
     if (typeof time === 'string') {
       const ms = Date.parse(time);
       return Number.isFinite(ms) ? ms : null;
@@ -1592,6 +1726,59 @@ export function createTrip(ctx) {
       return ev && isNum(ev.t) ? ev.t + (Number(time.offset_s) || 0) * 1000 : null;
     }
     return null;
+  }
+
+  /**
+   * `time: daylight` (2026-10-06, public #443): THE NEXT HOUR THE SUN IS UP OVER THIS STOP'S GROUND.
+   *
+   * A lander stands where it landed, and half the time that is in the dark: the walk of every stop
+   * on 2026-10-06 found five of the Moon trip's nine landers, and all three of the odd things left
+   * on the Moon, standing on a black disc, because Tranquility Base was two days into its night.
+   * No camera angle lights a place the Sun is not shining on. So such a stop is shown at the first
+   * hour from the visitor's clock at which the Sun is at least DAYLIGHT_MIN_DEG above that ground:
+   * now, when it already is, and otherwise up to a lunar day ahead. The frame prints the instant
+   * ("Shown at"), as it does for every stop that moves the clock, so nobody is told this is now.
+   *
+   * The ground is the subject itself when it stands on a world (a site, a thing left there), or the
+   * place a world stop stands `over:`. A stop with neither has no ground and is shown as it is, and
+   * so is one where the Sun does not come up in the search (a pole in its winter).
+   */
+  const DAYLIGHT_MIN_DEG = 14;
+  const DAYLIGHT_STEP_MS = 3600e3;
+  const DAYLIGHT_SEARCH_MS = 30 * 86400e3;
+  function daylightMs(entry, baseMs) {
+    const subject = entry.subject;
+    const stop = entry.stop;
+    if (!subject) return baseMs;
+    const world = worldById.get(subject.worldId);
+    if (!world) return baseMs;
+    const over = subject.kind === 'world' && Array.isArray(stop.over) && isNum(stop.over[0]) && isNum(stop.over[1]) ? stop.over : null;
+    const groundAt = (tMs) => {
+      if (over) {
+        const p = fixed({ id: 'over', propagator: 'fixed', frame: `${subject.id}-fixed`, fixed: { latDeg: over[0], lonDeg: over[1], altKm: 0 } }, tMs);
+        return p ? stage.toScene(p, p.frame, tMs) : null;
+      }
+      return subject.kind === 'world' ? null : subject.position(tMs);
+    };
+    const height = (tMs) => {
+      const at = groundAt(tMs);
+      const centreKm = positionOf(world.id, tMs);
+      const sun = sunScene(tMs);
+      if (!at || !centreKm || !sun) return null;
+      const centre = stage.toScene(centreKm, centreKm.frame, tMs);
+      const up = new THREE.Vector3().copy(at).sub(centre);
+      // Not standing on the world at all (a craft far from it): there is no ground to light.
+      if (!over && Math.abs(up.length() * stage.unitKm - world.radiusKm) > world.radiusKm * 0.1) return null;
+      return up.normalize().dot(new THREE.Vector3().copy(sun).sub(at).normalize());
+    };
+    const want = Math.sin(DAYLIGHT_MIN_DEG * DEG);
+    const first = height(baseMs);
+    if (first === null || first >= want) return baseMs;
+    for (let t = baseMs + DAYLIGHT_STEP_MS; t <= baseMs + DAYLIGHT_SEARCH_MS; t += DAYLIGHT_STEP_MS) {
+      const h = height(t);
+      if (h !== null && h >= want) return t;
+    }
+    return baseMs;
   }
 
   /** The fastest this stop's subject may be shown, on the stage it is flown on. See the caps above. */
@@ -1648,8 +1835,9 @@ export function createTrip(ctx) {
         // the eclipse it was showing, so the next stop's `solar-eclipse.next` counted from there
         // found the following one, a year later. The intro card's count is resolved from the
         // visitor's clock too, so the two now agree.
-        const ms = resolveStopTime(stop.time, run.savedClock ? run.savedClock.t : c.now());
-        entry.event = lastEvent;
+        const base = run.savedClock ? run.savedClock.t : c.now();
+        const ms = stop.time === 'daylight' ? daylightMs(entry, base) : resolveStopTime(stop.time, base);
+        entry.event = stop.time === 'daylight' ? null : lastEvent;
         if (ms === null) return 'unresolved';
         c.goTo(ms);
       }
@@ -1794,7 +1982,10 @@ export function createTrip(ctx) {
     state.wants = {
       figures: resolved.stops.some((entry) => skyOf(entry.stop)),
       overlay: resolved.stops.some((entry) => entry.stop.overlay),
+      spaceWeather: resolved.stops.some((entry) => entry.stop.live_note === 'space-weather'),
     };
+    run.ground = false;
+    state.ground = false;
     state.sky = null;
     state.overlay = null;
     state.exposure = null;
@@ -1851,7 +2042,34 @@ export function createTrip(ctx) {
   /** prefers-reduced-motion FORCES reader pacing: a cut arriving unbidden every twelve seconds is
    * its own kind of assault, and the dwell is not shortened to compensate. */
   function pacingFor(tour) {
-    return reducedMotion() ? 'reader' : tour.pacing || 'auto';
+    return reducedMotion() ? 'reader' : pacingOverride || tour.pacing || 'auto';
+  }
+
+  /**
+   * A PRESENTER PACES THE TRIP (public #441, 2026-10-06). In present mode the person with the
+   * clicker decides when the room has finished looking, so the frame asks for `reader`: every stop
+   * waits for Next. `auto` hands it back to the dwell, `null` to the registry's own pacing. It
+   * takes effect at once: a countdown that is running is dropped, and a stop that was waiting
+   * starts one. Reduced motion still wins (pacingFor).
+   */
+  let pacingOverride = null;
+  function setPacing(mode) {
+    pacingOverride = mode === 'reader' || mode === 'auto' ? mode : null;
+    if (!run) return;
+    const was = state.pacing;
+    state.pacing = pacingFor(run.tour);
+    if (was === state.pacing) return;
+    if (state.phase === 'dwell' && state.index >= 0) {
+      if (state.pacing === 'reader' && run.dwellTimer) {
+        timers = timers.filter((timer) => timer !== run.dwellTimer);
+        run.dwellTimer = null;
+        run.dwellMs = 0;
+      } else if (state.pacing === 'auto' && !run.dwellTimer) {
+        run.dwellMs = run.stops[state.index].stop.dwell_ms;
+        run.dwellTimer = after(run.dwellMs, () => advance());
+      }
+    }
+    notify();
   }
 
   function goTo(i) {
@@ -1892,7 +2110,12 @@ export function createTrip(ctx) {
     // the one fade (two would be the flicker the preference exists to prevent). `veil` is not
     // PAUSABLE: a pause pressed in the black takes effect on the flight that follows it.
     const nextStage = entry.stop.stage || run.tour.stage;
-    if (wantsVeil(nextStage)) {
+    // DOWN TO THE GROUND, AND BACK UP, IS A CUT TOO (2026-10-06). A stop with `look:` is seen from
+    // the visitor's own street, by the sky view (sky/skyview.js), which puts the camera 1.7 m above
+    // the ground with a wider lens: there is no flight between a camera in orbit and one in a
+    // garden that is not a fall, so it goes through the same black a stage change does.
+    const toGround = wantsGround(entry);
+    if (wantsVeil(nextStage) || (toGround !== !!run.ground && canVeil())) {
       state.phase = 'veil';
       // The card of the stop being LEFT goes as the black comes up (2026-09-23): the veil sits under
       // the card (ui/veil.js, z 8), so the old card stayed over the black and on into the next
@@ -1905,7 +2128,10 @@ export function createTrip(ctx) {
       const mine = gen;
       ctx.veil
         .through(() => {
-          if (mine === gen && run && state.index === index) enterStage(nextStage);
+          if (mine === gen && run && state.index === index) {
+            enterStage(nextStage);
+            setGround(toGround);
+          }
         })
         .then(() => {
           if (mine === gen && run && state.index === index && state.phase === 'veil') flyToStop(entry, index);
@@ -1913,21 +2139,95 @@ export function createTrip(ctx) {
       return;
     }
     enterStage(nextStage);
+    setGround(toGround);
     flyToStop(entry, index);
+  }
+
+  /** Whether there is a black to cut through: a veil, and a visitor who has not asked for less motion. */
+  function canVeil() {
+    return !!(ctx.veil && typeof ctx.veil.through === 'function' && !reducedMotion());
   }
 
   /** Whether reaching this stop changes the map's centre, and the veil should cover it. */
   function wantsVeil(nextStage) {
-    return !!(run && nextStage && nextStage !== stage.worldId && typeof ctx.setStage === 'function'
-      && ctx.veil && typeof ctx.veil.through === 'function' && !reducedMotion());
+    return !!(run && nextStage && nextStage !== stage.worldId && typeof ctx.setStage === 'function' && canVeil());
+  }
+
+  /** Whether this stop is seen from the visitor's ground: it says `look:`, and there is a sky view and a place. */
+  function wantsGround(entry) {
+    return !!(entry && entry.stop && entry.stop.look && ctx.skyView && typeof ctx.skyView.enter === 'function' && placeOf());
+  }
+
+  /**
+   * Hand the camera to the sky view, or take it back. Entering saves the camera's pose (the sky
+   * view's own `saved`), so the stop after the ground starts its flight from where the trip was
+   * before it went down; leaving the trip from the ground comes back to that pose too.
+   */
+  function setGround(on) {
+    if (!run || !!run.ground === !!on) return;
+    const sv = ctx.skyView;
+    if (on) {
+      rig.stopOrbit('replaced');
+      driftRun = null;
+      upTween = null;
+      run.ground = !!(sv && sv.enter(placeOf()) !== false && sv.active !== false);
+    } else {
+      if (sv && sv.active && typeof sv.exit === 'function') sv.exit();
+      run.ground = false;
+    }
+    state.ground = !!run.ground;
+  }
+
+  /** Turn the sky view to what the stop looks for; a thing under the horizon is faced where it will rise. */
+  function aimGround(entry) {
+    const place = placeOf();
+    const pass = entry.event && entry.event.pass ? entry.event.pass : null;
+    const aim = place ? lookTarget(entry.stop.look, place, ctx.clock.now(), pass) : null;
+    entry.aim = aim;
+    if (aim && ctx.skyView && typeof ctx.skyView.lookAtDeg === 'function') {
+      ctx.skyView.lookAtDeg(aim.azDeg, aim.up ? clamp(aim.altDeg, 6, 80) : 8);
+    }
+    return aim;
+  }
+
+  /**
+   * A STOP ON THE GROUND HAS NO FLIGHT. The sky view is already where the visitor stands; the head
+   * turns to what the stop is about (the view's own damped turn, a head turn and not a camera
+   * move), and the stop arrives on the next frame, through the same arrived() every other stop
+   * uses, so the card, the voice and the dwell cannot tell the difference.
+   */
+  function groundStop(entry, index) {
+    state.phase = 'flight';
+    entry.shot = null;
+    stopExtrasLeaving(entry);
+    letGoOfTheLastSubject(entry);
+    aimGround(entry);
+    notify();
+    schedule(() => arrived(index, 'done'));
   }
 
   /** The rest of goTo(), once the stop's stage is the map's: its clock, its shot, its flight. */
   function flyToStop(entry, index) {
     // The stop's own clock, after the stage (the rate cap depends on it) and BEFORE the shot, whose
     // subject, key light and arrival all read ctx.clock.now().
-    if (applyStopTime(entry) === 'unresolved') {
+    const clockChange = applyStopTime(entry);
+    if (clockChange === 'unresolved') {
       holdAt(entry);
+      return;
+    }
+    // THE MAP'S ORIGIN FOLLOWS THE CLOCK, AND ONLY ONCE A FRAME (scene/worlds.js update, which
+    // puts the stage's world back at the origin). A stop that has just moved the clock twelve
+    // hours composes its shot in this same tick: on Mars's stage Mars has by then gone a million
+    // kilometres along its orbit and the origin has not, so the shot was aimed a thousand units
+    // from the planet under the camera and the flight took an apex to match (found 2026-10-06 by
+    // tests/test_planetarium_trips.mjs, the first trip to move the clock on a planet's own stage).
+    // So the worlds are brought to the stop's instant before anything is measured.
+    if (clockChange === 'moved' && ctx.worlds && typeof ctx.worlds.update === 'function') {
+      try { ctx.worlds.update(ctx.clock.now()); } catch { /* the next frame does it */ }
+    }
+
+    if (entry.stop.look && run.ground) {
+      groundStop(entry, index);
       return;
     }
 
@@ -2045,7 +2345,8 @@ export function createTrip(ctx) {
     if (!run || state.index !== index || state.phase !== 'flight') return;
     if (reason !== 'done' && reason !== 'skipped') return;
     // A flight collapsed by Next, or slower than the wall clock, ends with the up where it belongs.
-    settleUp(upFor(run.stops[index].shot));
+    // Not on the ground: there the sky view sets the up, to the visitor's own vertical, every frame.
+    if (!run.ground) settleUp(upFor(run.stops[index].shot));
     endStretch();
     state.phase = 'settle';
     // A cut had no k = 0.6 to land the chapter at; it appears with the card (and under reduced
@@ -2344,7 +2645,7 @@ export function createTrip(ctx) {
     }
   }
 
-  function stop(reason) {
+  function stop(reason, opts) {
     if (!run) {
       state.phase = 'idle';
       notify();
@@ -2354,6 +2655,8 @@ export function createTrip(ctx) {
     state.generation = gen;
     leaving = true;
     clearTimers();
+    // Up off the ground first: the sky view gives the camera back where the trip had it before.
+    setGround(false);
     if (ctx.labels && ctx.labels.clearEmphasis) ctx.labels.clearEmphasis();
     // BEFORE anything else, and before `run` is thrown away: leaving must leave the camera where
     // it is, and a flight nobody stopped goes on flying with the frame gone.
@@ -2371,14 +2674,19 @@ export function createTrip(ctx) {
     for (const id of run.flipped) setLayer(id, false);
     for (const id of run.hidden || []) setLayer(id, true);
     restoreClock(run.savedClock, run.clockMovedInstant);
-    const stageLeft = !!(run.stageChanged && run.savedStage && typeof ctx.setStage === 'function');
+    // "KEEP FLYING FROM HERE" (public #447, 2026-10-06): `stop(reason, { stay: true })` leaves the
+    // map centred where the trip took it, so the camera really does stay where it is, on Mars or
+    // among the stars, and the visitor flies on from there. Everything else is still put back: the
+    // layers, the clock, the up. The way home is the one every other view has (the home button).
+    const staying = !!(opts && opts.stay);
+    const stageLeft = !staying && !!(run.stageChanged && run.savedStage && typeof ctx.setStage === 'function');
     if (stageLeft) {
       // Back to the stage the visitor was on. The camera cannot "stay where it is" across a stage
       // change -- the unit changed under it -- so this is the one leave that moves it, and the
       // trip's blurb says so. `leaving`, set at the top of this function, is what keeps the
       // sr:stage listener from re-flying the stop being left in the new stage's units.
       ctx.setStage(run.savedStage);
-    } else if (run.savedWorld) {
+    } else if (run.savedWorld && !(staying && run.stageChanged)) {
       rig.setWorldRadius(run.savedWorld.radius);
       rig.setWorldCentre(run.savedWorld.centre);
     }
@@ -2394,7 +2702,8 @@ export function createTrip(ctx) {
     state.overlay = null;
     state.exposure = null;
     state.zoom = 1;
-    state.wants = { figures: false, overlay: false };
+    state.wants = { figures: false, overlay: false, spaceWeather: false };
+    state.ground = false;
     state.stopId = null;
     state.stopEventType = null;
     state.stopTitle = null;
@@ -2578,6 +2887,7 @@ export function createTrip(ctx) {
     onChange,
     dwellFraction,
     holdDwell,
+    setPacing,
     currentRecordId,
     tours: () => TOURS,
     state,

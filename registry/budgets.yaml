@@ -21,7 +21,7 @@ budgets:
   # from a local server as CI runs it, and 3 068 642 B from the live site (compressed, with the saved
   # copy's 651 kB). The design's 2.5 MB was the live number of 2026-09-21 and the live site is over it
   # now; the gate is the number CI sees, with the 6 % margin the design asked for.
-  - {id: first_visit_bytes, value: 5600000, unit: bytes, since: 2026-10-02, reason: "The bridge (6 450 000, #357) is gone: with the named stars and the exoplanet table off the boot path (main.js OFF THE FIRST VISIT, internal #188) a local boot measured 5 267 127 B at 390x844 as a phone and 5 378 737 B at 1440x900, CelesTrak blocked, 2026-10-02; this is the phone number plus the 6 % margin the design asked for"}
+  - {id: first_visit_bytes, value: 5900000, unit: bytes, since: 2026-10-06, reason: "A bridge, not a target (internal #405): sixteen trips' stops and the narration manifest ride the boot graph, and CI measured 5 625 519 B (uncompressed, as screens.yml counts) with the five new trips, over the 5 600 000 B this row held since 2026-10-02. The cut that brings it back (trip stops and the narration manifest loaded when a trip opens, the card module lazy) is its own package; lower this row in that PR"}
   - {id: audio_at_boot_bytes, value: 0, unit: bytes, since: 2026-09-22, reason: "spec 0035: nothing before a gesture"}
   - {id: og_at_boot_bytes, value: 0, unit: bytes, since: 2026-09-22, reason: "spec 0033: previews and cards only"}
   # WOFF2 is already compressed, so this number is the same on CI's server and the live site.
@@ -38,7 +38,7 @@ budgets:
   # 12 000 was 10 404 kB with room for ONE more trip; with two it measures 15 459 kB. Raised by the
   # change that added them, in the open: nothing here is fetched before a visitor turns sound on,
   # and then one clip at a time (narration_trip_kb, unchanged, is what one listener downloads).
-  - {id: narration_total_kb, value: 18000, unit: kB, since: 2026-10-05, reason: "spec 0069 req 5: everything under site/audio/narration/ (86 stops: 15 459 kB with the AAC twins and the captions), measured 2026-10-05, with 15 % for a twelfth trip"}
+  - {id: narration_total_kb, value: 26000, unit: kB, since: 2026-10-06, reason: "spec 0069 req 5: everything under site/audio/narration/ (126 stops over sixteen trips: 22 490 kB with the AAC twins and the captions), measured 2026-10-06 after the five planetarium trips, with 15 % for the next two. Was 18 000 for eleven trips. Nothing of it is fetched before sound is on, and then a clip at a time"}
   - {id: trip_picture_bytes, value: 24000, unit: bytes, since: 2026-10-02, reason: "spec 0068 task 1: one WebP per trip card (640 x 360), fetched after the first visit settles; scripts/build_trip_thumbs.py --check"}
   # Spec 0067: the photographs of the nebulae (scene/nebulae.js), each fetched only when its object
   # is in view on a rung of the ladder or selected, never on a first visit. scripts/build_nebulae.py
