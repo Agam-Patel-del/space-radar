@@ -710,13 +710,13 @@ CASES: list[tuple[str, str, str, str]] = [
      "textures.yaml", 'original: "https://www.solarsystemscope.com/textures/download/8k_mars.jpg"',
      'original: "http://bjj.mmedia.is/data/mars/mars_map.jpg"'),
     ("a boot map that is not the one models.yaml credits",
-     "textures.yaml", "file: site/textures/2k_mars.jpg", "file: site/textures/2k_mercury.jpg"),
+     "textures.yaml", "file: site/textures/2k_mars.jpg", "file: site/textures/2k_jupiter.jpg"),
     # The moons' maps (2026-10-05): one file per world inside its budget, and the share of the
     # sphere it covers said as a number, because the card's line about the unseen side rests on it.
     ("a moon's map over the moon_map_bytes budget",
      "budgets.yaml", "id: moon_map_bytes, value: 250000,", "id: moon_map_bytes, value: 200000,"),
     ("the moons' maps over their total budget",
-     "budgets.yaml", "id: moon_maps_total_bytes, value: 3200000,", "id: moon_maps_total_bytes, value: 2900000,"),
+     "budgets.yaml", "id: moon_maps_total_bytes, value: 3000000,", "id: moon_maps_total_bytes, value: 2700000,"),
     ("a moon's map that covers more than the whole sphere",
      "textures.yaml", "    world: miranda\n    slot: map\n    when: boot\n    coverage: 0.394", "    world: miranda\n    slot: map\n    when: boot\n    coverage: 1.394"),
     ("a flat world's map that does not say how much of the sphere it covers",
@@ -1073,7 +1073,7 @@ TOUR_CASES: list[tuple[str, str, str]] = [
     ("a place to stand over that is not on the globe",
      "        over: [80, -20]", "        over: [95, -20]"),
     ("a place to stand over at a longitude that is a word nobody reads",
-     "        over: [70, midnight]", "        over: [70, noon]"),
+     "        over: [70, midnight]", "        over: [70, dusk]"),
     ("a live sentence no module writes",
      "        live_note: aurora", "        live_note: comets"),
     # --- 2026-10-06: stops seen from the ground, tonight, daylight, the side a camera stands on ----
@@ -1106,8 +1106,8 @@ TOUR_CASES: list[tuple[str, str, str]] = [
      "        seen_from: earth\n        frame_radii: 5.2\n",
      "        seen_from: moon\n        frame_radii: 5.2\n"),
     ("a camera held on one side and told to drift as well",
-     "        time: 2027-01-10T12:00:00Z\n        rate: 36000\n        drift_deg: 0\n",
-     "        time: 2027-01-10T12:00:00Z\n        rate: 36000\n        drift_deg: 20\n"),
+     "        time: 2027-01-12T00:00:00Z\n        rate: 36000\n        drift_deg: 0\n",
+     "        time: 2027-01-12T00:00:00Z\n        rate: 36000\n        drift_deg: 20\n"),
     ("a place to stand over on the Sun, which has no ground",
      "        target: {world: sun}\n        frame_radii: 6\n", "        target: {world: sun}\n        frame_radii: 6\n        over: [10, 10]\n"),
     # --- 2026-10-06, the remaining shows: a portrait, a kind of sky, the next shower, counted lines --

@@ -166,7 +166,7 @@ export const TOURS_INDEX = [
 "requires_observer": true,
 "min_stops": 3,
 "count": 7,
-"estimate_ms": 149026,
+"estimate_ms": 150358,
 "event": "lunar-eclipse"
 },
 {
@@ -228,7 +228,7 @@ export const TOURS_INDEX = [
 "next": "a-dark-sky",
 "min_stops": 3,
 "count": 9,
-"estimate_ms": 187848
+"estimate_ms": 190030
 },
 {
 "id": "a-dark-sky",
