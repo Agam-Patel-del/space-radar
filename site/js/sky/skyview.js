@@ -30,7 +30,7 @@ import * as Astronomy from '../../vendor/astronomy.js';
 import { SHOWERS } from '../data/showers.js';
 import { activeShowers, radiantAltAz } from './radiants.js';
 import { COPY, t, fmt } from '../copy/en.js';
-import { twilightPhase, DARKNESS, DARKNESS_IDS, CULTURE_IDS, DEFAULT_DARKNESS, FOV, clampFov, zoomFov, fovName } from './skymath.js';
+import { twilightPhase, DARKNESS, DARKNESS_IDS, CULTURE_IDS, DEFAULT_DARKNESS, FOV, clampFov, zoomFov, fovName, refractionDeg } from './skymath.js';
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
@@ -88,7 +88,7 @@ const SKY_STOPS = [
 export const SKY_OPTIONS_KEY = 'sr.sky';
 export const SKY_OPTION_DEFAULTS = Object.freeze({
   figures: true, names: true, grid: false, starGrid: false, sunPath: false, equator: false,
-  art: false, bounds: false, meteors: true, culture: 'western',
+  art: false, bounds: false, meteors: true, trails: false, culture: 'western',
   // `darknessBy`: 'place' reads the kind of sky off the night lights at the place (sky/skyglow.js);
   // 'you' is the visitor's own pick of `darkness`, which always wins once made.
   darkness: DEFAULT_DARKNESS, darknessBy: 'place', red: false,
@@ -840,7 +840,7 @@ export function createSkyView(ctx, options = {}) {
       const aa = radiantAltAz(sh, tMs, where);
       sprite.visible = !!aa && aa.altDeg > 0;
       if (!aa) continue;
-      showersNow.push({ id: sh.id, display: sh.display, zhr: sh.zhr, vKms: sh.v_kms, altDeg: aa.altDeg, azDeg: aa.azDeg });
+      showersNow.push({ id: sh.id, display: sh.display, zhr: sh.zhr, vKms: sh.v_kms, altDeg: aa.altDeg, azDeg: aa.azDeg, held: !!held && held.radiant === sh.id });
       localDir(aa.azDeg * DEG2RAD, aa.altDeg * DEG2RAD, _dir).multiplyScalar(parts.R * 0.94);
       sprite.position.copy(_dir);
     }
@@ -922,6 +922,9 @@ export function createSkyView(ctx, options = {}) {
       gu.value.copy(_groundColour);
     }
     if (parts) {
+      // The ground sky brings its own air and land (sky/skyair.js, sky/landscape.js).
+      parts.dome.visible = !ground;
+      parts.ground.visible = !ground;
       // The 30 and 60 degree arcs were the only grid there was; the ground sky has its own.
       parts.ticks.visible = !ground;
       parts.arcs.visible = !ground;
@@ -937,7 +940,7 @@ export function createSkyView(ctx, options = {}) {
     const forObserver = observer;
     import('./groundsky.js').then((m) => {
       if (mine !== groundAsked || !isActive || !group || !parts || observer !== forObserver) return;
-      ground = m.createGroundSky(ctx, { group, radius: parts.R, observer, domElement, options: worn() });
+      ground = m.createGroundSky(ctx, { group, radius: parts.R, observer, domElement, options: worn(), pointAt });
       veilWorlds(true);
       if (pendingPass) { ground.showPass(pendingPass.track, pendingPass.marks); }
       tell();
@@ -967,6 +970,30 @@ export function createSkyView(ctx, options = {}) {
       _upView.copy(_up).transformDirection(_viewInv);
     }
     for (const gl of layers.values()) if (gl && typeof gl.setSky === 'function') gl.setSky(on ? _upView : null);
+  }
+
+  /**
+   * ONE APPARENT PLACE (internal #418): where the air puts something. `apparent(p)` lifts a scene
+   * position in place, as scene/glyphs.js's shader lifts a satellite's dot, so its name (ui/labels.js)
+   * sits on the dot; `trueNdc(x, y)` takes a tap the other way, to where the thing under it is
+   * before the air, so the pick (main.js) finds what the eye was on.
+   */
+  function airShift(p, sign) {
+    const d = _dir.copy(p).sub(_o);
+    const dist = d.length();
+    if (!(dist > 0)) return p;
+    d.divideScalar(dist);
+    const sinAlt = THREE.MathUtils.clamp(d.dot(_up), -1, 1);
+    const alt = Math.asin(sinAlt);
+    const to = alt + sign * refractionDeg(alt * RAD2DEG) * DEG2RAD;
+    const level = d.addScaledVector(_up, -sinAlt);
+    const n = level.length();
+    if (n < 1e-6) return p;
+    return p.copy(level).multiplyScalar(Math.cos(to) / n).addScaledVector(_up, Math.sin(to)).multiplyScalar(dist).add(_o);
+  }
+  function trueNdc(x, y) {
+    airShift(_p.set(x, y, 0.5).unproject(camera), -1).project(camera);
+    return [_p.x, _p.y];
   }
 
   /**
@@ -1183,6 +1210,7 @@ export function createSkyView(ctx, options = {}) {
     return best >= 0 ? list[best] : null;
   }
   function tagWords(what, record) {
+    if (what.words) return what.words; // a tap on empty sky: the constellation (sky/groundsky.js)
     const W = COPY.sky.what;
     const mag = Number.isFinite(what.mag) ? fmt.num(what.mag, 1) : null;
     const name = what.name || (record && record.name) || W.star;
@@ -1211,7 +1239,7 @@ export function createSkyView(ctx, options = {}) {
     what.record = recordOf(what);
     ground.showTag(what, tagWords(what, what.record), openTagged);
     lastTap = { key, what };
-    return true;
+    return what.kind !== 'sky'; // empty sky is named, and still deselects (main.js)
   }
 
   /** A deep-sky picture under a tap, as a record id (`dso-m42`), or null: main.js opens its card. */
@@ -1481,6 +1509,8 @@ export function createSkyView(ctx, options = {}) {
     },
     pointAt,
     pointAtRecord,
+    apparent: (p) => (isActive && ground ? airShift(p, 1) : p),
+    trueNdc: (x, y) => (isActive && ground ? trueNdc(x, y) : [x, y]),
     pickSky,
     tapSky,
     /** The kind of sky drawn now and who chose it: { id, by: 'place' | 'you' | 'trip' | 'reading' | 'unread', lights }. */
@@ -1489,6 +1519,9 @@ export function createSkyView(ctx, options = {}) {
     },
     /** The showers whose meteors are being drawn and how many an hour this sky would show, or null. */
     get meteors() {
+      // The ground sky's own count of every source active tonight (sky/meteors.js), once it is up.
+      const note = ground ? ground.stats().meteorNote : null;
+      if (note) return note;
       if (!showersNow.length) return null;
       const m = ground ? ground.stats().meteors : null;
       const up = showersNow.filter((s) => s.altDeg > 0);
