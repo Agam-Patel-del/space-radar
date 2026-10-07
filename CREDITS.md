@@ -158,10 +158,14 @@ satisfies that with:
 | `2k_moon.jpg` | the Moon | CC BY 4.0 | Solar System Scope |
 | `2k_mars.jpg` | Mars | CC BY 4.0 | Solar System Scope |
 | `2k_jupiter.jpg` | Jupiter | CC BY 4.0 | Solar System Scope |
+| `2k_jupiter_opal_2025.webp` | Jupiter, as Hubble saw it (when asked for on its card) | CC BY 4.0 | [NASA, ESA, A.A. Simon, M.H. Wong: Hubble OPAL programme, WFC3/UVIS, 11 December 2025](https://archive.stsci.edu/hlsp/opal/opal-jupiter-cycle-32), adapted: calibrated, gap-filled at the poles, resampled; 63 500 B |
 | `2k_saturn.jpg` | Saturn | CC BY 4.0 | Solar System Scope |
+| `2k_saturn_opal_2025.webp` | Saturn, as Hubble saw it (when asked for on its card) | CC BY 4.0 | [NASA, ESA, A.A. Simon, M.H. Wong: Hubble OPAL programme, WFC3/UVIS, 29 August 2025](https://archive.stsci.edu/hlsp/opal/opal-saturn-cycle-32), adapted: calibrated, the strip the rings hid and the poles filled, resampled; 21 186 B |
 | `2k_saturn_ring_alpha.png` | Saturn's rings | CC BY 4.0 | Solar System Scope |
 | `2k_uranus.jpg` | Uranus | CC BY 4.0 | Solar System Scope |
+| `1k_uranus_opal_2025.webp` | Uranus, as Hubble saw it (when asked for on its card) | CC BY 4.0 | [NASA, ESA, A.A. Simon, M.H. Wong: Hubble OPAL programme, WFC3/UVIS, 23 October 2025](https://archive.stsci.edu/hlsp/opal/opal-uranus-cycle-33), adapted: calibrated, the unseen southern half filled with the equator's colour; 3 552 B |
 | `2k_neptune.jpg` | Neptune | CC BY 4.0 | Solar System Scope |
+| `1k_neptune_opal_2025.webp` | Neptune, as Hubble saw it (when asked for on its card) | CC BY 4.0 | [NASA, ESA, A.A. Simon, M.H. Wong: Hubble OPAL programme, WFC3/UVIS, 24 August 2025](https://archive.stsci.edu/hlsp/opal/opal-neptune-cycle-32), adapted: calibrated, the unseen far north filled; 4 766 B |
 | `2k_stars_milky_way.webp` | the Milky Way sky sphere | CC BY 4.0 | Solar System Scope |
 
 **What could not be verified, stated plainly.** solarsystemscope.com answers HTTP 403 to scripted
@@ -170,6 +174,26 @@ exact filename match to the published pack (all 14 appear on their download list
 2048 × 1024 dimensions, and the shared XMP fingerprint. `2k_uranus.jpg` and `2k_neptune.jpg` carry
 no XMP block at all — the other twelve do — so those two are the weakest links in the chain. If you
 want certainty, re-download the pack by hand and diff.
+
+**The four giants have a second face, Hubble's (2026-10-07).** They are met in the Solar System Scope maps
+above; on the card, "As Hubble saw it" fetches and puts on the global maps of
+the Outer Planet Atmospheres Legacy programme (OPAL; PI Amy Simon; Simon et al. 2015, Wong et al. 2020),
+a High-Level Science Product at MAST, <https://archive.stsci.edu/hlsp/opal>, doi:10.17909/T9G593, read
+2026-10-07. Licence: MAST's data-use page says "Some data products, such as high-level science products
+(HLSPs) which are created by the community and are made available through MAST, are covered under a
+Creative Commons Attribution license (CC BY 4.0)" (<https://archive.stsci.edu/publishing/data-use>), and
+the 2025 FITS files of Jupiter and Uranus carry `LICENSE = 'CC BY 4.0'` and `LIC_ATTR = 'NASA, ESA, A.A.
+Simon, M.H. Wong'` in their headers. The programme asks for this acknowledgement, given here in full:
+"This work used data acquired from the NASA/ESA HST Space Telescope, associated with OPAL program (PI:
+Simon, GO13937), and archived by the Space Telescope Science Institute, which is operated by the
+Association of Universities for Research in Astronomy, Inc., under NASA contract NAS 5-26555. All maps
+are available at http://dx.doi.org/10.17909/T9G593." **Changes made** (CC BY 4.0 asks that they be
+said; `scripts/build-textures.py` GIANTS has the arithmetic): three filters' calibrated maps combined as
+red, green and blue (631, 502 and 395 nm for Jupiter and Saturn; 657, 547 and 467 nm for Uranus and
+Neptune) on one albedo scale; the latitudes Hubble could not see from the Earth, and the strip Saturn's
+rings hid, filled from the rows beside them; rows resampled from planetographic to planetocentric
+latitude; rolled half a turn; resized; WebP. Nothing by Björn Jónsson or any other author whose terms
+forbid hosting is in them.
 
 **Twenty moon and dwarf-planet maps are public domain (issue #262, 2026-09-28; issues #387 to #415,
 2026-10-05).** Every world in `registry/worlds.yaml` that was one flat colour now wears a map, except
@@ -213,8 +237,10 @@ changed:
 | `2k_dione_cassini.webp` | Dione | Public domain | [NASA/JPL-Caltech/Space Science Institute/Lunar and Planetary Institute (Cassini, PIA18434)](https://commons.wikimedia.org/wiki/File:Dione_Color_Map.jpg): Cassini colour map (infrared, green, ultraviolet) | 100 % |
 | `2k_rhea_cassini.webp` | Rhea | Public domain | [NASA/JPL-Caltech/Space Science Institute/Lunar and Planetary Institute (Cassini, PIA18438)](https://commons.wikimedia.org/wiki/File:Rhea_Color_Map.jpg): Cassini colour map (infrared, green, ultraviolet) | 100 % |
 | `2k_iapetus_cassini.webp` | Iapetus | Public domain | [NASA/JPL-Caltech/Space Science Institute/Lunar and Planetary Institute (Cassini, PIA18436)](https://commons.wikimedia.org/wiki/File:Iapetus_Color_Map.jpg): Cassini colour map (infrared, green, ultraviolet) | 100 % |
-| `2k_titan_cassini_iss.webp` | Titan | Public domain | [USGS Astrogeology Science Center and NASA/JPL-Caltech/Space Science Institute (Cassini ISS, 938 nm)](https://planetarymaps.usgs.gov/mosaic/Titan_ISS_P19658_Mosaic_Global_4km.lbl): Cassini ISS near-infrared mosaic (PIA19658), greyscale | 100 % |
+| `2k_titan_cassini_2018.webp` | Titan | Public domain | [NASA/JPL-Caltech/Univ. Arizona (Cassini ISS, 938 nm, PIA22770)](https://photojournal.jpl.nasa.gov/catalog/PIA22770): the 2018 global mosaic of 9 873 pictures, made without image seams (it replaces USGS's copy of the 2015 mosaic, PIA19658, whose seams showed); near-infrared, tinted, contrast halved; 43 396 B | 100 % |
 | `2k_triton_voyager.webp` | Triton | Public domain | [USGS Astrogeology Science Center and NASA/JPL-Caltech/Lunar and Planetary Institute (Voyager 2, P. Schenk, PIA18668)](https://planetarymaps.usgs.gov/mosaic/Triton_Voyager2_ClrMosaic_GlobalFill_600m.lbl): Voyager 2 colour map (orange, green, blue), colour balanced and toned down; the north is unseen | 67 % |
+| `2k_ceres_dawn.webp` | Ceres, on its shape model | NASA media guidelines (not subject to copyright in the US); made by DLR for the Dawn mission | [NASA/JPL-Caltech/UCLA/MPS/DLR/IDA, hosted by USGS Astrogeology](https://planetarymaps.usgs.gov/mosaic/Ceres_Dawn_FC_DLR_global_20ppd_Oct2015.lbl): Dawn Framing Camera global mosaic of 2015, black and white, tinted in a grey we chose, rolled half a turn; 227 830 B | 99.6 % |
+| `2k_vesta_dawn.webp` | Vesta, on its shape model | NASA media guidelines (not subject to copyright in the US); made by DLR for the Dawn mission | [NASA/JPL-Caltech/UCLA/MPS/DLR/IDA, hosted by USGS Astrogeology](https://planetarymaps.usgs.gov/mosaic/Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.lbl): Dawn Framing Camera HAMO mosaic of 2011 to 2012, black and white, tinted in a grey we chose; the far north was in winter shadow; 230 890 B | 100 % |
 | `1k_miranda_voyager.webp` | Miranda | Public domain | [NASA/JPL-Caltech/USGS (Voyager 2)](https://commons.wikimedia.org/wiki/File:Miranda_map_JPL_USGS.jpg): Voyager 2 mosaic, greyscale; the north is unseen | 39 % |
 | `1k_ariel_voyager.webp` | Ariel | Public domain | [NASA/JPL-Caltech/USGS (Voyager 2)](https://commons.wikimedia.org/wiki/File:Ariel_map_JPL_USGS.jpg): Voyager 2 mosaic, greyscale; the north is unseen | 34 % |
 | `1k_umbriel_voyager.webp` | Umbriel | Public domain | [NASA/JPL-Caltech/USGS (Voyager 2)](https://commons.wikimedia.org/wiki/File:Umbriel_map_JPL_USGS.jpg): Voyager 2 mosaic, greyscale; the north is unseen | 37 % |
@@ -250,6 +276,7 @@ original by `scripts/build-textures.py --originals DIR`; the originals are not c
 checked against this list by `scripts/check_registry.py`):
 
 - Planet textures: Solar System Scope (solarsystemscope.com), CC BY 4.0
+- Giant planet maps: NASA, ESA, A.A. Simon, M.H. Wong (Hubble OPAL programme, doi:10.17909/T9G593), CC BY 4.0, adapted
 - Mercury map: USGS Astrogeology Science Center and NASA/Johns Hopkins University Applied Physics Laboratory/Carnegie Institution of Washington (MESSENGER MDIS), public domain
 - Venus surface map: USGS Astrogeology Science Center and NASA/JPL-Caltech (Magellan radar, C3-MIDR mosaic), public domain
 - Earth by day (4k): Blue Marble Next Generation, NASA Earth Observatory
@@ -266,8 +293,10 @@ checked against this list by `scripts/check_registry.py`):
 - Dione map: NASA/JPL-Caltech/Space Science Institute/Lunar and Planetary Institute (Cassini, PIA18434), public domain
 - Rhea map: NASA/JPL-Caltech/Space Science Institute/Lunar and Planetary Institute (Cassini, PIA18438), public domain
 - Iapetus map: NASA/JPL-Caltech/Space Science Institute/Lunar and Planetary Institute (Cassini, PIA18436), public domain
-- Titan map: USGS Astrogeology Science Center and NASA/JPL-Caltech/Space Science Institute (Cassini ISS, 938 nm), public domain
+- Titan map: NASA/JPL-Caltech/Univ. Arizona (Cassini ISS, 938 nm, PIA22770), public domain
 - Triton map: USGS Astrogeology Science Center and NASA/JPL-Caltech/Lunar and Planetary Institute (Voyager 2, P. Schenk, PIA18668), public domain
+- Ceres map: NASA/JPL-Caltech/UCLA/MPS/DLR/IDA (Dawn Framing Camera, global mosaic by DLR), hosted by USGS Astrogeology Science Center
+- Vesta map and shape: NASA/JPL-Caltech/UCLA/MPS/DLR/IDA (Dawn Framing Camera, HAMO mosaic and stereo height model by DLR), hosted by USGS Astrogeology Science Center
 - Miranda map: NASA/JPL-Caltech/USGS (Voyager 2), public domain
 - Ariel map: NASA/JPL-Caltech/USGS (Voyager 2), public domain
 - Umbriel map: NASA/JPL-Caltech/USGS (Voyager 2), public domain
@@ -506,9 +535,9 @@ than counted by hand.
 | file | NASA model | used for | size |
 |---|---|---|---|
 | `asteroid-bennu.glb` | 1999 RQ36 asteroid | Bennu, and the asteroid class | 24 KB |
-| `asteroid-vesta.glb` | Asteroid 4 Vesta (A), from NASA's 3D Printing collection | 4 Vesta | 23 KB |
+| `asteroid-vesta.glb` | NOT from NASA 3D Resources since 2026-10-07: DLR's stereo height model of Vesta from Dawn's Framing Camera pictures (`Vesta_Dawn_HAMO_DTM_DLR_Global_48ppd`, hosted by USGS Astrogeology, <https://planetarymaps.usgs.gov/mosaic/Vesta_Dawn_HAMO_DTM_DLR_Global_48ppd.lbl>), credit NASA/JPL-Caltech/UCLA/MPS/DLR/IDA; thinned to 3 072 triangles and given texture coordinates by `scripts/shape-to-glb.py`, so that it can wear DLR's mosaic on the same grid of longitudes. Licence as the mosaic's (section 2): NASA's media guidelines; the height model was made at DLR | 4 Vesta | 50 KB |
 | `asteroid-eros.glb` | Gaskell Eros Shape Model V1.1 (NASA PDS, not NASA 3D Resources): Gaskell, R. (2021), doi:10.26033/d0gq-9427. CC0 under NASA's science data policy | 433 Eros | 22 KB |
-| `dwarf-ceres.glb` | Ceres SPC Shape Model Dataset V1.0 (NASA PDS, not NASA 3D Resources): Park, R.S. and Buccino, D.R. (2018), DAWN-A-FC2-5-CERESSHAPESPC-V1.0. CC0 under NASA's science data policy | 1 Ceres | 37 KB |
+| `dwarf-ceres.glb` | Ceres SPC Shape Model Dataset V1.0 (NASA PDS, not NASA 3D Resources): Park, R.S. and Buccino, D.R. (2018), DAWN-A-FC2-5-CERESSHAPESPC-V1.0. CC0 under NASA's science data policy. Since 2026-10-07 with texture coordinates (longitude and latitude of each vertex), for the map in section 2 | 1 Ceres | 50 KB |
 
 **The shapes of Phobos and Deimos** are not `.glb` files: `site/js/data/moonshapes.js` holds a radius
 every 5 degrees for each, which `site/js/scene/moonshape.js` bends the moon's sphere to

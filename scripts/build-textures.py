@@ -33,12 +33,13 @@ WHY EACH MAP IS TREATED AS IT IS
               Flipped top to bottom into the convention the 2k Solar System Scope map uses (galactic
               north at the BOTTOM of the image; scene/starfield.js says how that was found), and its
               brightness distribution matched to the 2k map's, so the backdrop stays "a whisper".
-  moon, mars, mercury, jupiter
-              Solar System Scope's own 8k maps (Jupiter's is 4096 wide already) resampled to 4096 x
-              2048: the same pictures as the 2k maps, so nothing changes but the detail. Saturn,
-              Uranus, Neptune, Venus and the Sun are left at 2k: their larger maps carry no detail
-              the 2k ones lack (Saturn's "8k" is 4096 wide and differs from its own 2k upsample by
-              0.57 grey levels RMS, measured).
+  moon, mars  Solar System Scope's own 8k maps resampled to 4096 x 2048: the same pictures as the 2k
+              maps, so nothing changes but the detail. Venus and the Sun are left at 2k.
+  jupiter, saturn, uranus, neptune  (`--only giants`, 2026-10-07)
+              Hubble's OPAL maps of 2025, from the calibrated FITS files: see GIANTS below. They are
+              each giant's SECOND face (registry/textures.yaml `<id>-hubble`, asked for on the card);
+              the face a giant is met with is still Solar System Scope's 2k map, and Jupiter's 4k
+              one (`4k/jupiter.webp`, made by an earlier version of this script from their 8k file).
 
 THE MOONS AND SMALL WORLDS (2026-10-05, `--only moons` or `--only moon-ganymede,...`)
   One map per world, written to site/textures/ under a NEW name (2k_<world>_<source>.webp, or 1k_ when the
@@ -78,7 +79,6 @@ ORIGINALS = {
     "milky": "svs_milkyway_2020_4k_gal.exr",
     "moon": "sss_8k_moon.jpg",
     "mars": "sss_8k_mars.jpg",
-    "jupiter": "sss_8k_jupiter.jpg",
 }
 
 # WebP quality per map, chosen by eye on close-ups (2026-09-28) and by the bytes they cost.
@@ -383,6 +383,177 @@ def build_venus_surface(orig: Path, report: dict) -> None:
 
 # --- the moons and small worlds -------------------------------------------------------------------
 #
+# --- the four giants, from Hubble's OPAL maps (2026-10-07, public #401, #407, #411) ----------------
+#
+# OPAL (the Outer Planet Atmospheres Legacy programme; PI A. Simon; Simon et al. 2015, Wong et al.
+# 2020; MAST, doi:10.17909/T9G593) maps each giant once a year with Hubble's WFC3/UVIS: one global
+# cylindrical map per filter and rotation, as FITS. The files carry `LICENSE = 'CC BY 4.0'` and
+# `LIC_ATTR = 'NASA, ESA, A.A. Simon, M.H. Wong'`. What each planet's README says, and what is done:
+#
+#   the numbers   FITS value x the README's "I/F scale factor" = the reflectivity I/F, with the limb
+#                 darkening already taken out by a Minnaert law of exponent k (per filter, in the
+#                 same table). A filter with a different k is normalised differently, so the three
+#                 are not yet a colour: Saturn's 467 nm map read brighter than its 502 nm one. Each
+#                 is therefore multiplied by 2 / (2k + 1), which is what a whole disc of that
+#                 reflectivity and that limb law sends back at full phase (its geometric albedo).
+#                 The means then come out at the planets' published albedos (Jupiter 0.50 here
+#                 against the fact sheet's 0.538) with no gain chosen by us.
+#   the colour    red, green and blue are the three filters OPAL's own colour maps use: 631, 502
+#                 and 395 nm for Jupiter and Saturn (the "blue" is a violet, so their yellows and
+#                 browns are stronger than the eye's), 657, 547 and 467 nm for Uranus and Neptune.
+#   the latitudes the maps' rows are equal steps of PLANETOGRAPHIC latitude. scene/weather/flow.js
+#                 reads the shipped map as equal steps of planetocentric latitude and moves each
+#                 row at the published wind of that latitude, so the rows are resampled:
+#                 tan(centric) = (1 - f)^2 tan(graphic), f from the README's radii.
+#   the gaps      Hubble sees a planet from the Earth: the far pole is not in the map (6 % of
+#                 Jupiter and Saturn, the 15 % of Neptune north of 40 N, and Uranus's whole southern
+#                 half: the planet lies on its side, north pole towards us), and the rows nearest that edge are limb noise
+#                 (`trim` degrees are dropped). Beyond the last good row the map is that row's mean
+#                 colour, with the row's own pattern fading out over a few degrees. Saturn's rings,
+#                 nearly edge-on in August 2025, hide a strip 4 degrees wide at the equator with
+#                 their shadow: it is filled from the rows either side. Nothing is drawn there that
+#                 Hubble did not see; `coverage` in the registry is the share that is data.
+#   the longitude System III west, 360 at the left edge: rolled half a turn so that 0 is the middle
+#                 of the map, where the mesh has it. The clouds drift in that system, so a spot is
+#                 where it was on the day of the map and not today.
+# key: (rotation, cycle folder, ((filter, I/F factor, Minnaert k) x 3 for R, G, B), flattening,
+#       trim deg, (width, name, byte cap) per output)
+GIANTS = {
+    "jupiter": ("jupiter-2025a", (("f631n", .00383, .999), ("f502n", .00386, .95), ("f395n", .00365, .85)), 1 - 66854 / 71492, 1.5,
+                ((2048, "2k_jupiter_opal_2025.webp", 498_976),)),   # Hubble's map is 3600 wide; add (3600, "4k/...", cap) here if it ever becomes a tier
+    "saturn":  ("saturn-2025a", (("f631n", .00362, .80), ("f502n", .00285, .65), ("f395n", .00231, .40)), 1 - 54364 / 60268, 2.0,
+                ((2048, "2k_saturn_opal_2025.webp", 199_916),)),
+    "uranus":  ("uranus-2025a", (("f657n", .00440, .57), ("f547m", .00266, .80), ("f467m", .00317, .85)), 1 - 24973 / 25559, 9.0,
+                ((1024, "1k_uranus_opal_2025.webp", 77_751),)),
+    "neptune": ("neptune-2025b", (("f657n", .00413, .50), ("f547m", .00257, .80), ("f467m", .00496, .88)), 1 - 24341 / 24764, 17.0,
+                ((1024, "1k_neptune_opal_2025.webp", 241_580),)),
+}
+GIANT_MAX_Q = 90
+RING_STRIP = {"saturn": 0.93}
+
+
+def read_fits(path: Path):
+    """The primary image of a FITS file as float64, row 0 first as stored (OPAL: north first)."""
+    raw = path.read_bytes()
+    at, hdr = 0, {}
+    while True:
+        block = raw[at:at + 2880].decode("ascii", "replace")
+        at += 2880
+        cards = [block[i:i + 80] for i in range(0, 2880, 80)]
+        for c in cards:
+            if c[8:10] == "= ":
+                hdr[c[:8].strip()] = c[10:].split("/")[0].strip()
+        if any(c.startswith("END") for c in cards):
+            break
+    w, h = int(hdr["NAXIS1"]), int(hdr["NAXIS2"])
+    if int(hdr["BITPIX"]) != -32:
+        raise SystemExit(f"{path.name}: BITPIX {hdr['BITPIX']}, expected -32")
+    return np.frombuffer(raw, dtype=">f4", count=w * h, offset=at).reshape(h, w).astype(np.float64), hdr
+
+
+def giant_map(orig: Path, key: str):
+    """(linear RGB, h x w x 3, rows in planetocentric latitude, longitude 0 in the middle; facts)."""
+    rot, bands, f, trim, _ = GIANTS[key]
+    chans, date = [], ""
+    for filt, scale, k in bands:
+        a, hdr = read_fits(orig / f"hlsp_opal_hst_wfc3-uvis_{rot}_{filt}_v1_globalmap.fits")
+        date = date or hdr.get("DATE-OBS", "").strip("' ")[:10]
+        chans.append(a * scale * 2 / (2 * k + 1))
+    lin = np.stack(chans, 2)
+    h, w, _ = lin.shape
+    lat = 90 - 180 * (np.arange(h) + 0.5) / h
+    lum = lin @ np.array(LUMA)
+    full = (lin.min(axis=2) > 0).mean(axis=1) >= 0.995
+    rows = np.nonzero(full)[0]
+    top, bottom = rows[0], rows[-1]
+    step = int(round(trim * h / 180))
+    top = top + step if top > 0 else 0
+    bottom = bottom - step if bottom < h - 1 else h - 1
+    good = np.zeros(h, bool)
+    good[top:bottom + 1] = True
+    # A dark strip inside the data (Saturn's rings and their shadow, and only where RING_STRIP names
+    # the planet: Jupiter's belts are dark too): rows whose mean falls under that share of the median
+    # of the 30 degrees around them, within 15 degrees of the equator, widened by a degree.
+    zl = lum.mean(axis=1)
+    half = h // 12
+    strip = np.zeros(h, bool)
+    for r in range(top, bottom + 1) if key in RING_STRIP else ():
+        strip[r] = zl[r] < RING_STRIP[key] * np.median(zl[max(top, r - half):min(bottom, r + half) + 1])
+    grow = max(1, h // 180)
+    strip = np.convolve(strip, np.ones(2 * grow + 1), "same") > 0
+    strip &= good & (np.abs(lat) < 15)   # nearly edge-on rings cross the disc near the equator and nowhere else
+    out = lin.copy()
+    idx = np.arange(h)
+    keep = good & ~strip
+    if strip.any():
+        for c in range(3):
+            # Straight lines between the last clean row above and the first below, column by column.
+            above = np.maximum.accumulate(np.where(keep, idx, -1))
+            below = np.minimum.accumulate(np.where(keep, idx, h)[::-1])[::-1]
+            for r in np.nonzero(strip)[0]:
+                t = (r - above[r]) / (below[r] - above[r])
+                out[r, :, c] = lin[above[r], :, c] * (1 - t) + lin[below[r], :, c] * t
+    fade = 4.0 * h / 180   # the edge row's own pattern is gone 4 degrees past it (1/e)
+    edge_rows = max(1, int(round(2.0 * h / 180)))
+    for edge, sl, sign in ((top, slice(top, top + edge_rows), -1), (bottom, slice(bottom - edge_rows + 1, bottom + 1), 1)):
+        if (sign < 0 and edge == 0) or (sign > 0 and edge == h - 1):
+            continue
+        mean = out[sl].mean(axis=(0, 1))
+        pattern = out[sl].mean(axis=0) - mean
+        beyond = np.arange(0, edge) if sign < 0 else np.arange(edge + 1, h)
+        d = np.abs(beyond - edge)
+        out[beyond] = mean[None, None, :] + pattern[None, :, :] * np.exp(-d / fade)[:, None, None]
+    weight = np.cos(np.radians(lat))
+    coverage = float(weight[keep].sum() / weight.sum())
+    # Planetographic rows to planetocentric ones.
+    centric = np.radians(np.clip(lat, -89.999, 89.999))
+    graphic = np.degrees(np.arctan(np.tan(centric) / (1 - f) ** 2))
+    src_row = (90 - graphic) / 180 * h - 0.5
+    lo = np.clip(np.floor(src_row).astype(int), 0, h - 2)
+    t = np.clip(src_row - lo, 0, 1)[:, None, None]
+    out = out[lo] * (1 - t) + out[lo + 1] * t
+    out = np.roll(np.clip(out, 0, None), w // 2, axis=1)
+    wsum = weight.sum() * w
+    mean = (out * weight[:, None, None]).sum(axis=(0, 1)) / wsum
+    facts = {"date": date, "coverage": coverage, "mean": mean, "clipped": float((out.max(axis=2) > 1).mean()),
+             "north_deg": float(lat[top]), "south_deg": float(lat[bottom]),
+             "strip_deg": (float(lat[strip].max()), float(lat[strip].min())) if strip.any() else None}
+    return out, facts
+
+
+def build_giant(orig: Path, key: str, report: dict) -> None:
+    import io
+    lin, facts = giant_map(orig, key)
+    full = Image.fromarray(_to_srgb8(lin))
+    tint = _to_srgb8(facts["mean"])
+    strip = facts["strip_deg"]
+    print(f"  {key}: mapped {facts['date']}, data {facts['south_deg']:+.1f} to {facts['north_deg']:+.1f} deg planetographic"
+          f"{'' if not strip else f', a strip {strip[1]:+.1f} to {strip[0]:+.1f} filled'}, coverage {facts['coverage']:.3f}, "
+          f"mean colour #{tint[0]:02x}{tint[1]:02x}{tint[2]:02x} (albedo-scaled mean {float(facts['mean'] @ np.array(LUMA)):.3f}), clipped {facts['clipped'] * 100:.2f} %", flush=True)
+    if key == "jupiter":
+        # The Great Red Spot for registry/weather.yaml `spot`: the reddest oval between 10 and 30 S.
+        h, w, _ = lin.shape
+        band = slice(int(h * (90 + 10) / 180), int(h * (90 + 30) / 180))
+        red = lin[band, :, 0] / np.maximum(lin[band, :, 2], 1e-3)
+        sm = np.asarray(Image.fromarray((np.clip(red / red.max(), 0, 1) * 255).astype(np.uint8)).resize((w // 8, red.shape[0] // 8), Image.BOX), dtype=float)
+        r, c = np.unravel_index(sm.argmax(), sm.shape)
+        print(f"  jupiter: Great Red Spot at u {(c + 0.5) * 8 / w:.4f}, v {1 - (band.start + (r + 0.5) * 8) / h:.4f} (v from the south)", flush=True)
+    for width, name, cap in GIANTS[key][4]:
+        img = full if width == full.width else full.resize((width, width // 2), Image.LANCZOS)
+        q = GIANT_MAX_Q
+        while q > 40:
+            buf = io.BytesIO()
+            img.save(buf, "WEBP", quality=q, method=4)
+            if buf.tell() <= cap * 0.985:   # method 6 below is a little smaller, never larger by this much
+                break
+            q -= 2
+        size = save_webp(img, ROOT / "site" / "textures" / name, q)
+        if size > cap:
+            raise SystemExit(f"{name}: {size} B is over the {cap} B it replaces")
+        report[name.split("/")[-1]] = size
+        print(f"  {key}: {name} {img.width}x{img.height} WebP {q} {size:,d} B (the file it replaces: {cap:,d} B)", flush=True)
+
+
 # key: (original's basename under --originals, output name, roll half a turn, saturation kept or
 #       None for a grey mosaic that is tinted, contrast about the mean, nodata threshold)
 MOONS = {
@@ -397,7 +568,10 @@ MOONS = {
     "rhea":      ("commons_rhea.jpg", "rhea_cassini.webp", True, 0.35, 1.0, -1),
     "iapetus":   ("commons_iapetus.jpg", "iapetus_cassini.webp", True, 0.35, 1.0, -1),
     # 938 nm, through the haze. Half the contrast: the picture is of a surface no eye has seen.
-    "titan":     ("Titan_ISS_P19658_Mosaic_Global_4km.tif", "titan_cassini_iss.webp", True, None, 0.5, 0),
+    # 2026-10-07 (internal #426): the 2018 mosaic (PIA22770, 9 873 pictures averaged, "a mosaic without
+    # image seams" in its caption) instead of USGS's copy of the 2015 one (PIA19658), whose pictures'
+    # outlines showed as arcs and steps of tone across the globe. Same layout: longitude 180 in the middle.
+    "titan":     ("PIA22770.tif", "titan_cassini_2018.webp", True, None, 0.5, 0),
     "miranda":   ("commons_miranda.jpg", "miranda_voyager.webp", False, None, 1.0, 6),
     "ariel":     ("commons_ariel.jpg", "ariel_voyager.webp", False, None, 1.0, 6),
     "umbriel":   ("commons_umbriel.jpg", "umbriel_voyager.webp", False, None, 1.0, 6),
@@ -410,7 +584,21 @@ MOONS = {
     # contrast raised, which gives the whole moon a green cast no eye would see. BALANCED, below.
     "triton":    ("Triton_Voyager2_ClrMosaic_GlobalFill_600m.tif", "triton_voyager.webp", False, 0.3, 1.0, 0),
     "phobos":    ("commons_phobos.jpg", "phobos_viking.webp", False, None, 1.0, -1),
+    # 2026-10-07 (internal #382): Dawn's Framing Camera mosaics, made by DLR for the Dawn team and
+    # hosted by USGS. Black-and-white photographs under a low Sun, so the craters' shadows are in
+    # them. Ceres's has longitude 180 in the middle (rolled); Vesta's has 0 there already, on the
+    # grid of longitudes of DLR's height model, from which site/models/asteroid-vesta.glb is made
+    # (scripts/shape-to-glb.py --from-dtm). These two are not rows of registry/worlds.yaml: they are
+    # drawn by scene/realmodels.js, on their shape models, and their tint is SMALL_BODY_TINT.
+    "ceres":     ("Ceres_Dawn_FC_DLR_global_20ppd_Oct2015.tif", "ceres_dawn.webp", True, None, 1.0, 0),
+    "vesta":     ("Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif", "vesta_dawn.webp", False, None, 1.0, 0),
 }
+# The greys the two are tinted with: chosen by us, a neutral grey with the warmth of rock, Ceres the
+# darker because it is (its albedo is about a fifth of Vesta's: 0.09 against 0.42 in JPL's Small-Body
+# Database, as remembered -- the API did not answer on 2026-10-07, so the card gives no number and
+# says only that the colour is chosen). Neither is as dark on screen as it is in space: at Ceres's
+# true albedo the map would be coal on a black sky.
+SMALL_BODY_TINT = {"ceres": "#8a8580", "vesta": "#b0aaa0"}
 # A colour mosaic whose overall colour is the filters' and not the world's: its area-weighted mean
 # colour is taken to the hue of `look.flat` by a gain per channel, in linear light, before anything
 # else. The pattern of colour differences across the map is kept; the cast is not.
@@ -471,9 +659,10 @@ def flat_colour(world: str):
     import re
     text = (ROOT / "registry" / "worlds.yaml").read_text(encoding="utf-8")
     m = re.search(r"^  - id: %s\n(?:(?!^  - id: ).*\n)*?    look: \{flat: \"#([0-9a-fA-F]{6})\"" % re.escape(world), text, re.M)
-    if not m:
+    if not m and world not in SMALL_BODY_TINT:
         raise SystemExit(f"registry/worlds.yaml: no `look.flat` for {world}")
-    srgb = np.array([int(m.group(1)[i:i + 2], 16) for i in (0, 2, 4)], np.float64) / 255
+    hexa = m.group(1) if m else SMALL_BODY_TINT[world][1:]
+    srgb = np.array([int(hexa[i:i + 2], 16) for i in (0, 2, 4)], np.float64) / 255
     return np.where(srgb <= 0.04045, srgb / 12.92, ((srgb + 0.055) / 1.055) ** 2.4)
 
 
@@ -634,10 +823,10 @@ STEPS = {
     "mars": lambda o, r: build_planet(o, "mars", r),
     "mercury": build_mercury,
     "venus-surface": build_venus_surface,
-    "jupiter": lambda o, r: build_planet(o, "jupiter", r),
+    **{k: (lambda o, r, k=k: build_giant(o, k, r)) for k in GIANTS},
     **{f"moon-{k}": (lambda o, r, k=k: build_moon(o, k, r)) for k in MOONS},
 }
-TIER1 = [k for k in STEPS if not k.startswith("moon-") and k != "venus-surface"]
+TIER1 = [k for k in STEPS if not k.startswith("moon-") and k != "venus-surface" and k not in GIANTS]
 
 
 def main(argv: list[str]) -> int:
@@ -649,7 +838,7 @@ def main(argv: list[str]) -> int:
     lazy()
     MONTHS[:] = [int(m) for m in args.months.split(",") if m]
     only = [s for s in args.only.split(",") if s] or TIER1   # the moons are asked for: --only moons
-    only = [k for s in only for k in ([f"moon-{m}" for m in MOONS] if s == "moons" else [s])]
+    only = [k for s in only for k in ([f"moon-{m}" for m in MOONS] if s == "moons" else list(GIANTS) if s == "giants" else [s])]
     report: dict[str, int] = {}
     for key in only:
         if key not in STEPS:

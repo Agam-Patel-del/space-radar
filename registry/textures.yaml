@@ -41,6 +41,14 @@ version: 1
 #               every tier-1 file from these with `--originals DIR`
 #     make      tier 1+: what the build did to it
 #
+# THE GIANTS' SECOND FACE (2026-10-07): Jupiter, Saturn, Uranus and Neptune keep the Solar System Scope
+# maps as the face they are met with, and each has a row `<id>-hubble` (slot `surface`, `when: asked`):
+# Hubble's OPAL map of 2025, built from the calibrated FITS files (scripts/build-textures.py GIANTS
+# says how), fetched when a visitor presses "As Hubble saw it" on the card (scene/worlds.js setFace)
+# and never before. Hubble's maps are honest and plain -- Saturn's bands are faint, Uranus and Neptune
+# nearly featureless -- which is why they are the second face and not the first. The share of the
+# sphere Hubble saw is in each row's `make:` and in the card's note, not in `coverage:`.
+#
 # NOT HERE, AND WHY. Saturn, Uranus, Neptune, Venus and the Sun keep their 2k maps: the larger Solar
 # System Scope maps of them carry no detail the 2k ones lack (Saturn's "8k" is 4096 wide and differs
 # from its own 2k upsample by 0.57 grey levels RMS, measured 2026-09-28). The Moon's NASA SVS CGI Moon
@@ -281,6 +289,22 @@ textures:
         original: "https://www.solarsystemscope.com/textures/download/8k_jupiter.jpg"
         make: "scripts/build-textures.py jupiter: resampled to 4096 x 2048 (Lanczos), WebP 84"
 
+  - id: jupiter-hubble
+    world: jupiter
+    slot: surface
+    when: asked
+    files:
+      - tier: 0
+        file: site/textures/2k_jupiter_opal_2025.webp
+        px: [2048, 1024]
+        bytes: 63500
+        format: rgb
+        licence: 'CC BY 4.0: "Some data products, such as high-level science products (HLSPs) which are created by the community and are made available through MAST, are covered under a Creative Commons Attribution license (CC BY 4.0)" (archive.stsci.edu/publishing/data-use); the 2025 FITS files of Jupiter and Uranus say it themselves: LICENSE = CC BY 4.0, LIC_ATTR = NASA, ESA, A.A. Simon, M.H. Wong'
+        credit: "Giant planet maps: NASA, ESA, A.A. Simon, M.H. Wong (Hubble OPAL programme, doi:10.17909/T9G593), CC BY 4.0, adapted"
+        source: "https://archive.stsci.edu/missions/hlsp/opal/cycle32/jupiter/hlsp_opal_hst_wfc3-uvis_jupiter-2025_all_v1_readme.txt (read 2026-10-07)"
+        original: "https://archive.stsci.edu/missions/hlsp/opal/cycle32/jupiter/hlsp_opal_hst_wfc3-uvis_jupiter-2025a_<filter>_v1_globalmap.fits for f631n, f502n, f395n (observed 11 December 2025)"
+        make: "scripts/build-textures.py jupiter: Hubble's OPAL maps at 631, 502 and 395 nm as red, green and blue (the filters OPAL's own colour map uses), each FITS value times the README's I/F factor and 2/(2k+1) for its Minnaert k, so the three are one albedo scale (mean 0.49; the fact sheet's geometric albedo is 0.538); data from 79.6 S to 83.2 N, 98.8 % of the sphere, the caps beyond filled with the last row's mean colour; rows resampled from planetographic to planetocentric latitude (f = 0.0649), rolled half a turn so System III longitude 0 is the middle, WebP 90"
+
   - id: sun
     world: sun
     slot: map
@@ -294,6 +318,7 @@ textures:
         licence: 'CC BY 4.0: "You may use, adapt, and share these textures for any purpose, even commercially."'
         credit: "Planet textures: Solar System Scope (solarsystemscope.com), CC BY 4.0"
         source: "https://www.solarsystemscope.com/textures/ (read 2026-09-28)"
+
 
   - id: venus
     world: venus
@@ -341,10 +366,26 @@ textures:
         credit: "Planet textures: Solar System Scope (solarsystemscope.com), CC BY 4.0"
         source: "https://www.solarsystemscope.com/textures/ (read 2026-09-28)"
 
+
+  - id: saturn-hubble
+    world: saturn
+    slot: surface
+    when: asked
+    files:
+      - tier: 0
+        file: site/textures/2k_saturn_opal_2025.webp
+        px: [2048, 1024]
+        bytes: 21186
+        format: rgb
+        licence: 'CC BY 4.0: "Some data products, such as high-level science products (HLSPs) which are created by the community and are made available through MAST, are covered under a Creative Commons Attribution license (CC BY 4.0)" (archive.stsci.edu/publishing/data-use); the 2025 FITS files of Jupiter and Uranus say it themselves: LICENSE = CC BY 4.0, LIC_ATTR = NASA, ESA, A.A. Simon, M.H. Wong'
+        credit: "Giant planet maps: NASA, ESA, A.A. Simon, M.H. Wong (Hubble OPAL programme, doi:10.17909/T9G593), CC BY 4.0, adapted"
+        source: "https://archive.stsci.edu/missions/hlsp/opal/cycle32/saturn/hlsp_opal_hst_wfc3-uvis_saturn-2025_all_v1_readme.txt (read 2026-10-07)"
+        original: "https://archive.stsci.edu/missions/hlsp/opal/cycle32/saturn/hlsp_opal_hst_wfc3-uvis_saturn-2025a_<filter>_v1_globalmap.fits for f631n, f502n, f395n (observed 29 August 2025)"
+        make: "scripts/build-textures.py saturn: as Jupiter's, from the 1800 x 900 maps (f = 0.0980; mean 0.41 against the fact sheet's 0.499); data from 82.7 S to 77.1 N; the strip from 0.7 S to 5.3 N that the nearly edge-on rings and their shadow hid is filled from the rows either side; 93.0 % of the sphere is data; resampled to 2048 x 1024 (Lanczos), and Hubble's map is no sharper than 1800, WebP 90"
   - id: saturn-ring
     world: saturn
     slot: ring
-    when: boot
+    when: asked
     files:
       - tier: 0
         file: site/textures/2k_saturn_ring_alpha.png
@@ -369,6 +410,22 @@ textures:
         credit: "Planet textures: Solar System Scope (solarsystemscope.com), CC BY 4.0"
         source: "https://www.solarsystemscope.com/textures/ (read 2026-09-28)"
 
+
+  - id: uranus-hubble
+    world: uranus
+    slot: surface
+    when: asked
+    files:
+      - tier: 0
+        file: site/textures/1k_uranus_opal_2025.webp
+        px: [1024, 512]
+        bytes: 3552
+        format: rgb
+        licence: 'CC BY 4.0: "Some data products, such as high-level science products (HLSPs) which are created by the community and are made available through MAST, are covered under a Creative Commons Attribution license (CC BY 4.0)" (archive.stsci.edu/publishing/data-use); the 2025 FITS files of Jupiter and Uranus say it themselves: LICENSE = CC BY 4.0, LIC_ATTR = NASA, ESA, A.A. Simon, M.H. Wong'
+        credit: "Giant planet maps: NASA, ESA, A.A. Simon, M.H. Wong (Hubble OPAL programme, doi:10.17909/T9G593), CC BY 4.0, adapted"
+        source: "https://archive.stsci.edu/missions/hlsp/opal/cycle33/uranus/hlsp_opal_hst_wfc3-uvis_uranus-2025_all_v1_readme.txt (read 2026-10-07)"
+        original: "https://archive.stsci.edu/missions/hlsp/opal/cycle33/uranus/hlsp_opal_hst_wfc3-uvis_uranus-2025a_<filter>_v1_globalmap.fits for f657n, f547m, f467m (observed 23 October 2025)"
+        make: "scripts/build-textures.py uranus: as Jupiter's, from the 721 x 361 maps at 657, 547 and 467 nm (f = 0.0229; mean 0.44 against the fact sheet's 0.488); Hubble saw the planet from 3 N to the north pole, 47.6 % of the sphere: the southern half is turned away from the Earth (the planet lies on its side, north pole towards us) and is filled with the colour of the last row seen; the longitudes are as published, WebP 90"
   - id: neptune
     world: neptune
     slot: map
@@ -383,6 +440,22 @@ textures:
         credit: "Planet textures: Solar System Scope (solarsystemscope.com), CC BY 4.0"
         source: "https://www.solarsystemscope.com/textures/ (read 2026-09-28)"
 
+
+  - id: neptune-hubble
+    world: neptune
+    slot: surface
+    when: asked
+    files:
+      - tier: 0
+        file: site/textures/1k_neptune_opal_2025.webp
+        px: [1024, 512]
+        bytes: 4766
+        format: rgb
+        licence: 'CC BY 4.0: "Some data products, such as high-level science products (HLSPs) which are created by the community and are made available through MAST, are covered under a Creative Commons Attribution license (CC BY 4.0)" (archive.stsci.edu/publishing/data-use); the 2025 FITS files of Jupiter and Uranus say it themselves: LICENSE = CC BY 4.0, LIC_ATTR = NASA, ESA, A.A. Simon, M.H. Wong'
+        credit: "Giant planet maps: NASA, ESA, A.A. Simon, M.H. Wong (Hubble OPAL programme, doi:10.17909/T9G593), CC BY 4.0, adapted"
+        source: "https://archive.stsci.edu/missions/hlsp/opal/cycle32/neptune/hlsp_opal_hst_wfc3-uvis_neptune-2025b_all_v1_readme.txt (read 2026-10-07)"
+        original: "https://archive.stsci.edu/missions/hlsp/opal/cycle32/neptune/hlsp_opal_hst_wfc3-uvis_neptune-2025b_<filter>_v1_globalmap.fits for f657n, f547m, f467m (observed 24 August 2025)"
+        make: "scripts/build-textures.py neptune: as Jupiter's, from the 721 x 361 maps at 657, 547 and 467 nm (f = 0.0171; mean 0.39 against the fact sheet's 0.442); data from the south pole to 39.4 N, 81.9 % of the sphere, the north beyond filled with the colour of the last row seen, WebP 90"
   # THE MOONS AND SMALL WORLDS (2026-10-05, issues #387 to #415): one public-domain NASA / USGS map for
   # every world that was a flat colour, one size for every device. `when: boot` here means "nothing
   # sharper to fetch later", NOT "fetched at boot": scene/worlds.js fetches a world's map the first
@@ -569,15 +642,54 @@ textures:
     coverage: 1.000
     files:
       - tier: 0
-        file: site/textures/2k_titan_cassini_iss.webp
+        file: site/textures/2k_titan_cassini_2018.webp
         px: [2048, 1024]
-        bytes: 62786
+        bytes: 43396
         format: rgb
-        licence: 'Public domain: "USGS-authored or produced data and information are considered to be in the U.S. Public Domain" (usgs.gov, Copyrights and Credits)'
-        credit: "Titan map: USGS Astrogeology Science Center and NASA/JPL-Caltech/Space Science Institute (Cassini ISS, 938 nm), public domain"
-        source: "https://planetarymaps.usgs.gov/mosaic/Titan_ISS_P19658_Mosaic_Global_4km.lbl (read 2026-10-05)"
-        original: "https://planetarymaps.usgs.gov/mosaic/Titan_ISS_P19658_Mosaic_Global_4km.tif"
-        make: "scripts/build-textures.py moon-titan: USGS mosaic, 4 km to 2048 wide, rolled half a turn so longitude 0 is at the centre, tinted with the world's flat colour, contrast about the mean times 0.5, mean taken to the flat colour's luminance by a gain 1.12, WebP 82"
+        licence: "NASA Images and Media Usage Guidelines (nasa.gov/nasa-brand-center/images-and-media, read 2026-10-07): NASA content, including media files used in the rendition of 3-dimensional models such as texture maps, \"generally are not subject to copyright in the United States\""
+        credit: "Titan map: NASA/JPL-Caltech/Univ. Arizona (Cassini ISS, 938 nm, PIA22770), public domain"
+        source: "https://photojournal.jpl.nasa.gov/catalog/PIA22770 (read 2026-10-07)"
+        original: "https://assets.science.nasa.gov/content/dam/science/psd/photojournal/pia/pia22/pia22770/PIA22770.tif"
+        make: "scripts/build-textures.py moon-titan: the 2018 Cassini ISS mosaic (9 873 pictures averaged, made without image seams: it replaces the 2015 one, whose pictures' outlines showed), 5760 px to 2048 wide, rolled half a turn so longitude 0 is at the centre, tinted with the world's flat colour, contrast about the mean times 0.5, mean taken to the flat colour's luminance by a gain 0.95, WebP 82"
+  # CERES AND VESTA (2026-10-07, internal #382) are not rows of registry/worlds.yaml: they are dots of
+  # the far-bodies and asteroid layers, drawn close up from their shape models by scene/realmodels.js
+  # (site/models/dwarf-ceres.glb, asteroid-vesta.glb), and these maps are laid on those shapes by the
+  # texture coordinates scripts/shape-to-glb.py --uv writes. Fetched with the shape, when one of the
+  # two is approached, never before. scripts/check_registry.py SMALL_BODY_MAPS names the model each
+  # belongs to. They count against the moons' byte budgets like every other small world's map.
+  - id: ceres
+    world: ceres
+    slot: map
+    when: boot
+    coverage: 0.996
+    files:
+      - tier: 0
+        file: site/textures/2k_ceres_dawn.webp
+        px: [1536, 768]
+        bytes: 227830
+        format: rgb
+        licence: "NASA Images and Media Usage Guidelines (nasa.gov/nasa-brand-center/images-and-media, read 2026-10-07): NASA content, including media files used in the rendition of 3-dimensional models such as texture maps, \"generally are not subject to copyright in the United States\". The mosaic was assembled at DLR for the Dawn mission and is hosted by USGS Astrogeology"
+        credit: "Ceres map: NASA/JPL-Caltech/UCLA/MPS/DLR/IDA (Dawn Framing Camera, global mosaic by DLR), hosted by USGS Astrogeology Science Center"
+        source: "https://planetarymaps.usgs.gov/mosaic/Ceres_Dawn_FC_DLR_global_20ppd_Oct2015.lbl (read 2026-10-07)"
+        original: "https://planetarymaps.usgs.gov/mosaic/Ceres_Dawn_FC_DLR_global_20ppd_Oct2015.tif"
+        make: "scripts/build-textures.py moon-ceres: 7383 px to 1536 wide (the crater field would not fit the byte cap at 2048), rolled half a turn so longitude 0 is at the centre, tinted with the grey scripts/build-textures.py SMALL_BODY_TINT chose, mean taken to that grey's luminance by a gain 1.03, the 0.4 % with no data filled with the grey, WebP 74"
+
+  - id: vesta
+    world: vesta
+    slot: map
+    when: boot
+    coverage: 1.000
+    files:
+      - tier: 0
+        file: site/textures/2k_vesta_dawn.webp
+        px: [2048, 1024]
+        bytes: 230890
+        format: rgb
+        licence: "NASA Images and Media Usage Guidelines (nasa.gov/nasa-brand-center/images-and-media, read 2026-10-07): NASA content, including media files used in the rendition of 3-dimensional models such as texture maps, \"generally are not subject to copyright in the United States\". The mosaic was assembled at DLR for the Dawn mission and is hosted by USGS Astrogeology"
+        credit: "Vesta map and shape: NASA/JPL-Caltech/UCLA/MPS/DLR/IDA (Dawn Framing Camera, HAMO mosaic and stereo height model by DLR), hosted by USGS Astrogeology Science Center"
+        source: "https://planetarymaps.usgs.gov/mosaic/Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.lbl (read 2026-10-07)"
+        original: "https://planetarymaps.usgs.gov/mosaic/Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif"
+        make: "scripts/build-textures.py moon-vesta: 26704 px to 2048 wide, longitude 0 already at the centre, tinted with the grey scripts/build-textures.py SMALL_BODY_TINT chose, mean taken to that grey's luminance by a gain 4.61 (the far north was in winter shadow and is nearly black in the mosaic), WebP 58"
 
   - id: triton
     world: triton

@@ -388,25 +388,31 @@ export const WORLDS = [
   // read 2026-10-06): Jupiter 0.06487, Saturn 0.09796, Uranus 0.02293, Neptune 0.01708. They spin
   // in ten to seventeen hours and bulge: Saturn is a tenth wider than it is tall, which anyone can
   // see in a photograph and a sphere cannot show. oblateRadii() makes the mesh that shape.
+  // A SECOND FACE (2026-10-07, public #401, #407, #411): `faces.hubble` is Hubble's OPAL map of 2025,
+  // built from the calibrated FITS files by scripts/build-textures.py (`--only giants`), offered on
+  // the card as "As Hubble saw it" and fetched only then (setFace). It is not the first face: the
+  // true maps are plain beside the artist's. Its rows are planetocentric latitude, the one
+  // scene/weather/flow.js moves its winds by; `faceSpot` is where the Great Red Spot is in THAT
+  // map (measured on it), so the flow goes round the right oval whichever face is worn.
   {
     id: 'jupiter', display: 'Jupiter', parent: 'sun', radiusKm: 69911.0,
     body: 'Jupiter', frame: SUN_INERTIAL, view: VIEW_COMPRESSED, rotation: 'iau',
-    look: { map: '2k_jupiter.jpg', tint: 0xb3aba1, limb: 1.05, oblate: 0.06487 },
+    look: { map: '2k_jupiter.jpg', tint: 0xb3aba1, limb: 1.05, oblate: 0.06487, faces: { hubble: '2k_jupiter_opal_2025.webp' }, faceSpot: { hubble: { u: 0.6058, v: 0.3878, half_u: 0.019, half_v: 0.024 } } },
   },
   {
     id: 'saturn', display: 'Saturn', parent: 'sun', radiusKm: 58232.0,
     body: 'Saturn', frame: SUN_INERTIAL, view: VIEW_COMPRESSED, rotation: 'iau',
-    look: { map: '2k_saturn.jpg', tint: 0xdfcca8, limb: 1.05, oblate: 0.09796, ring: { innerKm: 74500, outerKm: 140220, map: '2k_saturn_ring_alpha.png' } },
+    look: { map: '2k_saturn.jpg', tint: 0xdfcca8, faces: { hubble: '2k_saturn_opal_2025.webp' }, limb: 1.05, oblate: 0.09796, ring: { innerKm: 74500, outerKm: 140220, map: '2k_saturn_ring_alpha.png' } },
   },
   {
     id: 'uranus', display: 'Uranus', parent: 'sun', radiusKm: 25362.0,
     body: 'Uranus', frame: SUN_INERTIAL, view: VIEW_COMPRESSED, rotation: 'iau',
-    look: { map: '2k_uranus.jpg', tint: 0x9eced5, limb: 1.2, oblate: 0.02293, rim: { colour: 0xc8f4ff, gain: 0.35 }, ring: URANUS_RINGS },
+    look: { map: '2k_uranus.jpg', tint: 0x9eced5, faces: { hubble: '1k_uranus_opal_2025.webp' }, limb: 1.2, oblate: 0.02293, rim: { colour: 0xc8f4ff, gain: 0.35 }, ring: URANUS_RINGS },
   },
   {
     id: 'neptune', display: 'Neptune', parent: 'sun', radiusKm: 24622.0,
     body: 'Neptune', frame: SUN_INERTIAL, view: VIEW_COMPRESSED, rotation: 'iau',
-    look: { map: '2k_neptune.jpg', tint: 0x395eb7, limb: 1.15, oblate: 0.01708, rim: { colour: 0x9cc0ff, gain: 0.35 }, ring: NEPTUNE_RINGS },
+    look: { map: '2k_neptune.jpg', tint: 0x395eb7, faces: { hubble: '1k_neptune_opal_2025.webp' }, limb: 1.15, oblate: 0.01708, rim: { colour: 0x9cc0ff, gain: 0.35 }, ring: NEPTUNE_RINGS },
   },
   // THE FLAT ONES. No map ships for these five and none is fetched (`flat: true`, no `map`), so the
   // tint is not a texture's mean like the rows above: it is a HUE from a published description,
@@ -441,7 +447,10 @@ export const WORLDS = [
     // "charcoal black, to dark orange and white" (Wikipedia): a light orange-tan.
     id: 'pluto', display: 'Pluto', parent: 'sun', radiusKm: 1188.3,
     body: 'Pluto', frame: SUN_INERTIAL, view: VIEW_COMPRESSED, rotation: 'iau',
-    look: { flat: true, tint: 0xb4926f, map: '2k_pluto_nh_colour.webp', mapKind: 'redblue', albedo: 0.52, rough: 0.3 },
+    // `face` (2026-10-07, internal #426): the heart, the face Pluto is known by, as east longitude and
+    // latitude -- the brightest 12-degree patch of the map we ship, measured on it that day (201 E,
+    // 21 N: the bright ice of Tombaugh Regio). An arrival prefers the lit side that shows it (faceDirOf).
+    look: { flat: true, tint: 0xb4926f, map: '2k_pluto_nh_colour.webp', mapKind: 'redblue', albedo: 0.52, rough: 0.3, face: { lonDeg: 201, latDeg: 21 } },
   },
   {
     // "shades of yellow, red, white, black, and green, largely due to ... sulfur" (Wikipedia).
@@ -495,7 +504,7 @@ export const WORLDS = [
     // ground, is what anyone has seen of Titan in visible light. Darkened 2026-09-22, same hue.
     id: 'titan', display: 'Titan', parent: 'saturn', radiusKm: 2574.76,
     body: 'Titan', frame: SUN_INERTIAL, view: VIEW_WITH_PARENT, rotation: 'locked',
-    look: { flat: true, tint: 0x8f5e26, map: '2k_titan_cassini_iss.webp', mapKind: 'infrared', albedo: 0.22, haze: true, limb: 0.9, air: 'titan', rim: { colour: 0xe0a050, gain: 0.7 } },
+    look: { flat: true, tint: 0x8f5e26, map: '2k_titan_cassini_2018.webp', mapKind: 'infrared', albedo: 0.22, haze: true, limb: 0.9, air: 'titan', rim: { colour: 0xe0a050, gain: 0.7 } },
   },
   {
     // "Triton's reddish color" (Wikipedia) on frost with "an icy sheen" (NASA Science): a pale pink.
@@ -1770,6 +1779,18 @@ export function createWorlds(scene, opts = {}) {
     return u.value.clone();
   }
 
+  /**
+   * The unit vector from a world's centre to the face it is known by (`look.face`), in scene axes,
+   * as the world is turned this frame; null for a world that names none or has not been placed.
+   * The mesh has longitude 0 on its +X and north on its +Y, east toward -Z (SphereGeometry's u).
+   */
+  function faceDirOf(id) {
+    const w = BY_ID.get(id);
+    const mesh = meshes.get(id);
+    if (!w || !w.look.face || !mesh) return null;
+    return faceVector(w.look.face.lonDeg, w.look.face.latDeg).applyQuaternion(mesh.quaternion);
+  }
+
   /** Bend a moon to its measured shape now. A promise of true once it is; null if it has none waiting. */
   function preloadShape(id) { return fetchShape(id); }
   /** True once a world wears its measured shape rather than a ball. */
@@ -1792,11 +1813,32 @@ export function createWorlds(scene, opts = {}) {
     return w && w.look.faces ? Object.keys(w.look.faces) : [];
   }
   function faceOf(id) { return faceWanted.get(id) || null; }
+  // A sharper copy of a world's OWN map (scene/texturetiers.js, through main.js) must not replace a
+  // second face the visitor chose: it is kept, and worn when they go back to the world's own face.
+  const tierMap = new Map();   // id -> THREE.Texture | null
+  function setTierMap(id, tex) {
+    tierMap.set(id, tex || null);
+    return faceWanted.get(id) ? null : setMap(id, tex);
+  }
+  // The weather's pinned oval (scene/weather/worldweather.js uWxSpot) is a place in a map: a face
+  // whose spot is elsewhere (`look.faceSpot`) moves it, and the world's own face puts it back.
+  const ownSpot = new Map();
+  function faceSpot(id, face) {
+    const w = BY_ID.get(id);
+    const mesh = meshes.get(id);
+    const u = mesh && mesh.material && mesh.material.uniforms && mesh.material.uniforms.uWxSpot;
+    if (!w || !w.look.faceSpot || !u || !u.value) return;
+    if (!ownSpot.has(id)) ownSpot.set(id, { ...u.value });
+    const s = face && w.look.faceSpot[face];
+    const to = s ? { x: s.u, y: s.v, z: s.half_u, w: s.half_v } : ownSpot.get(id);
+    u.value.x = to.x; u.value.y = to.y; u.value.z = to.z; u.value.w = to.w;
+  }
   function setFace(id, face) {
     const w = BY_ID.get(id);
     const name = face && w && w.look.faces ? w.look.faces[face] : null;
     faceWanted.set(id, name ? face : null);
-    if (!name) { setMap(id, null); return true; }
+    faceSpot(id, name ? face : null);
+    if (!name) { setMap(id, tierMap.get(id) || null); return true; }
     if (!bootMap.has(id)) { fetchMap(id); return false; } // its own map first; apply() calls back
     const key = `${id}/${face}`;
     const have = faceTex.get(key);
@@ -2031,6 +2073,7 @@ export function createWorlds(scene, opts = {}) {
     facesOf,
     faceOf,
     setFace,
+    setTierMap,
     discShare,
     meshFor,
     positionOf,
@@ -2046,6 +2089,7 @@ export function createWorlds(scene, opts = {}) {
     preloadShape,
     hasShape,
     sunDirOf,
+    faceDirOf,
     pick,
     pickAll,
     dispose,
@@ -2305,6 +2349,13 @@ function applyIauOrientation(mesh, bodyName, tMs, worldId) {
   _m4.makeBasis(_bx, _bz, _by);
   mesh.quaternion.setFromRotationMatrix(_m4);
   return true;
+}
+
+/** A point of a world's map, east longitude and latitude in degrees, as a unit vector in its mesh's own axes. */
+export function faceVector(lonDeg, latDeg) {
+  const lon = (lonDeg * Math.PI) / 180;
+  const lat = (latDeg * Math.PI) / 180;
+  return new THREE.Vector3(Math.cos(lat) * Math.cos(lon), Math.sin(lat), -Math.cos(lat) * Math.sin(lon));
 }
 
 /**

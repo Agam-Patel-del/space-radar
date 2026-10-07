@@ -418,6 +418,17 @@ const mappedLine = (draw) => !/no surface map|plain ball/.test(draw || '') && (d
     `Mars, which has a map and air, says how it is lit and that its air is drawn thicker than it is: ${marsLine}`);
   check(/haze is drawn at its measured height/.test(drawingLine(recs.find((x) => x.id === 'titan')) || ''), 'Titan says its haze is at its measured height');
   check(drawingLine(recs.find((x) => x.id === 'jupiter')) === COPY.drawing.worldLit, 'Jupiter, with no shell, says only how it is lit');
+  // 2026-10-07: each giant offers Hubble's map of 2025 as a second face, with its day and its credit in the note.
+  {
+    await import(join(JS, 'copy/en.later.js'));
+    const FACE = COPY.worldFace || {};
+    for (const id of ['jupiter', 'saturn', 'uranus', 'neptune']) {
+      const row = WORLDS.find((x) => x.id === id);
+      const F = FACE[id];
+      check(row.look.faces && /opal_2025\.webp$/.test(row.look.faces.hubble || '') && /\.jpg$/.test(row.look.map), `${id} is met in its own map and offers Hubble's`);
+      check(F && /as Hubble mapped it on \d+ [A-Z][a-z]+ 2025/.test(F.notes.hubble) && /CC BY 4\.0/.test(F.notes.hubble) && F.modes.hubble && F.notes.own, `${id}'s card names the day of Hubble's map and its licence`);
+    }
+  }
   // The Earth has its own shader and its own sunlight is the reference; the Sun is the light.
   // 2026-10-06: the Sun says what its close-up picture is (scene/sun.js), and still nothing about exposure.
   check(drawingLine(recs.find((x) => x.id === 'earth')) === null && drawingLine(recs.find((x) => x.id === 'sun')) === COPY.drawing.worldSun
@@ -1147,6 +1158,22 @@ if (problems.length) {
     const off = Math.acos(Math.min(1, lon0.dot(w.meshFor(to).position.clone().sub(m.position).normalize()))) * 180 / Math.PI;
     const pole = new THREE.Vector3(0, 1, 0).applyQuaternion(m.quaternion).dot(h) * sign;
     check(off < 2 && pole > 0.9, `${id}'s longitude 0 faces ${to} (${off.toFixed(1)} deg off) and its north is the right pole (${pole.toFixed(2)})`);
+  }
+  // 2026-10-07 (internal #426): Pluto names the face it is known by, the heart, and an arrival prefers
+  // the lit side that shows it (scene/framing.js litOffset). The heart is on the hemisphere that
+  // never sees Charon, in the north; and a point of a map is +X at longitude 0, east toward -Z.
+  {
+    const { faceVector } = await import(join(JS, 'scene/worlds.js'));
+    const v = (lon, lat) => faceVector(lon, lat);
+    check(v(0, 0).distanceTo(new THREE.Vector3(1, 0, 0)) < 1e-9 && v(90, 0).distanceTo(new THREE.Vector3(0, 0, -1)) < 1e-9 && v(0, 90).distanceTo(new THREE.Vector3(0, 1, 0)) < 1e-9,
+      'a point of a map: longitude 0 on +X, 90 east on -Z, the north pole on +Y');
+    at(t);
+    const heart = w.faceDirOf('pluto');
+    const toCharon = w.meshFor('charon').position.clone().sub(w.meshFor('pluto').position).normalize();
+    const north = new THREE.Vector3(0, 1, 0).applyQuaternion(w.meshFor('pluto').quaternion);
+    check(heart && Math.abs(heart.length() - 1) < 1e-9 && heart.dot(toCharon) < -0.8 && heart.dot(north) > 0.2,
+      `Pluto's heart faces away from Charon, in the north (${heart && heart.dot(toCharon).toFixed(2)}, ${heart && heart.dot(north).toFixed(2)})`);
+    check(w.faceDirOf('jupiter') === null && w.faceDirOf('nowhere') === null, 'a world that names no face has none');
   }
 }
 

@@ -301,6 +301,25 @@ export const TEXTURES = [
     ]
   },
   {
+    "id": "jupiter-hubble",
+    "world": "jupiter",
+    "slot": "surface",
+    "when": "asked",
+    "files": [
+      {
+        "tier": 0,
+        "file": "textures/2k_jupiter_opal_2025.webp",
+        "px": [
+          2048,
+          1024
+        ],
+        "bytes": 63500,
+        "format": "rgb",
+        "credit": "Giant planet maps: NASA, ESA, A.A. Simon, M.H. Wong (Hubble OPAL programme, doi:10.17909/T9G593), CC BY 4.0, adapted"
+      }
+    ]
+  },
+  {
     "id": "sun",
     "world": "sun",
     "slot": "map",
@@ -377,10 +396,29 @@ export const TEXTURES = [
     ]
   },
   {
+    "id": "saturn-hubble",
+    "world": "saturn",
+    "slot": "surface",
+    "when": "asked",
+    "files": [
+      {
+        "tier": 0,
+        "file": "textures/2k_saturn_opal_2025.webp",
+        "px": [
+          2048,
+          1024
+        ],
+        "bytes": 21186,
+        "format": "rgb",
+        "credit": "Giant planet maps: NASA, ESA, A.A. Simon, M.H. Wong (Hubble OPAL programme, doi:10.17909/T9G593), CC BY 4.0, adapted"
+      }
+    ]
+  },
+  {
     "id": "saturn-ring",
     "world": "saturn",
     "slot": "ring",
-    "when": "boot",
+    "when": "asked",
     "files": [
       {
         "tier": 0,
@@ -415,6 +453,25 @@ export const TEXTURES = [
     ]
   },
   {
+    "id": "uranus-hubble",
+    "world": "uranus",
+    "slot": "surface",
+    "when": "asked",
+    "files": [
+      {
+        "tier": 0,
+        "file": "textures/1k_uranus_opal_2025.webp",
+        "px": [
+          1024,
+          512
+        ],
+        "bytes": 3552,
+        "format": "rgb",
+        "credit": "Giant planet maps: NASA, ESA, A.A. Simon, M.H. Wong (Hubble OPAL programme, doi:10.17909/T9G593), CC BY 4.0, adapted"
+      }
+    ]
+  },
+  {
     "id": "neptune",
     "world": "neptune",
     "slot": "map",
@@ -430,6 +487,25 @@ export const TEXTURES = [
         "bytes": 241580,
         "format": "rgb",
         "credit": "Planet textures: Solar System Scope (solarsystemscope.com), CC BY 4.0"
+      }
+    ]
+  },
+  {
+    "id": "neptune-hubble",
+    "world": "neptune",
+    "slot": "surface",
+    "when": "asked",
+    "files": [
+      {
+        "tier": 0,
+        "file": "textures/1k_neptune_opal_2025.webp",
+        "px": [
+          1024,
+          512
+        ],
+        "bytes": 4766,
+        "format": "rgb",
+        "credit": "Giant planet maps: NASA, ESA, A.A. Simon, M.H. Wong (Hubble OPAL programme, doi:10.17909/T9G593), CC BY 4.0, adapted"
       }
     ]
   },
@@ -642,14 +718,54 @@ export const TEXTURES = [
     "files": [
       {
         "tier": 0,
-        "file": "textures/2k_titan_cassini_iss.webp",
+        "file": "textures/2k_titan_cassini_2018.webp",
         "px": [
           2048,
           1024
         ],
-        "bytes": 62786,
+        "bytes": 43396,
         "format": "rgb",
-        "credit": "Titan map: USGS Astrogeology Science Center and NASA/JPL-Caltech/Space Science Institute (Cassini ISS, 938 nm), public domain"
+        "credit": "Titan map: NASA/JPL-Caltech/Univ. Arizona (Cassini ISS, 938 nm, PIA22770), public domain"
+      }
+    ]
+  },
+  {
+    "id": "ceres",
+    "world": "ceres",
+    "slot": "map",
+    "when": "boot",
+    "coverage": 0.996,
+    "files": [
+      {
+        "tier": 0,
+        "file": "textures/2k_ceres_dawn.webp",
+        "px": [
+          1536,
+          768
+        ],
+        "bytes": 227830,
+        "format": "rgb",
+        "credit": "Ceres map: NASA/JPL-Caltech/UCLA/MPS/DLR/IDA (Dawn Framing Camera, global mosaic by DLR), hosted by USGS Astrogeology Science Center"
+      }
+    ]
+  },
+  {
+    "id": "vesta",
+    "world": "vesta",
+    "slot": "map",
+    "when": "boot",
+    "coverage": 1.0,
+    "files": [
+      {
+        "tier": 0,
+        "file": "textures/2k_vesta_dawn.webp",
+        "px": [
+          2048,
+          1024
+        ],
+        "bytes": 230890,
+        "format": "rgb",
+        "credit": "Vesta map and shape: NASA/JPL-Caltech/UCLA/MPS/DLR/IDA (Dawn Framing Camera, HAMO mosaic and stereo height model by DLR), hosted by USGS Astrogeology Science Center"
       }
     ]
   },
