@@ -46,7 +46,7 @@ import {
   UNITS,
  article, typeWords, NAKED_EYE_LIMIT } from '../copy/en.js';
 import '../copy/en.later.js';
-import { propagate } from '../propagate/index.js';
+import { propagate, EPHEMERIS_OF } from '../propagate/index.js';
 import { launchLabel } from './labels.js';
 import { realModelFor } from '../scene/realmodels.js';
 import { sunlitState } from '../scene/shadow.js';
@@ -74,6 +74,7 @@ import { openShare, savePostcard } from './share.js';
 import { exposurePanel, pictureNote } from './exposure.js';
 import { stage } from '../scene/stage.js';
 import { icon } from './icons.js';
+import { overlayLine, legendNode, paintLegend } from './overlaylegend.js';
 import { systemOfRecordId, phaseIsMeasured } from '../scene/systems.js';
 
 const MAX_FIRST_SENTENCE = 160; // spec 0013 requirement 10, enforced by check_copy.py
@@ -539,7 +540,50 @@ function stormStatusKey(md) {
   return status || null;
 }
 
+/** A size in km² as the card writes it; under one square kilometre is said, not rounded to 0. */
+function eventSizeText(km2) {
+  const E = COPY.earthEvent;
+  if (!Number.isFinite(km2) || km2 <= 0) return null;
+  return km2 < 1 ? E.sizeSmall : t(E.sizeValue, { n: fmt.int(roughly(km2)) });
+}
+
+/**
+ * The rows of a wildfire, a volcano or an iceberg (data/eonet.js): what it is, when it was last
+ * reported, how big that report said, where, and who reported it. Exported for the test.
+ */
+export function earthEventRows(record) {
+  const E = COPY.earthEvent;
+  const md = meta(record);
+  const rows = [];
+  const kind = pick(md, 'kind');
+  if (kind && E.kinds[kind]) rows.push([E.rows.kind, E.kinds[kind]]);
+  const reported = pickNumber(md, 'reportedMs');
+  if (reported !== null) rows.push([kind === 'volcano' ? E.rows.since : E.rows.reported, timeText.utcLong(reported)]);
+  const first = pickNumber(md, 'firstMs');
+  if (first !== null && reported !== null && reported - first > 86400e3) rows.push([E.rows.first, timeText.utcLong(first)]);
+  const size = eventSizeText(pickNumber(md, 'sizeKm2'));
+  if (size) rows.push([E.rows.size, size]);
+  const lat = pickNumber(md, 'latDeg');
+  const lon = pickNumber(md, 'lonDeg');
+  if (lat !== null && lon !== null) rows.push([E.rows.where, t(COPY.card.values.latLon, { lat: latText(lat), lon: lonText(lon) })]);
+  const agencies = pick(md, 'agencies');
+  if (Array.isArray(agencies) && agencies.length) rows.push([E.rows.by, t(E.by, { agencies: agencies.slice(0, 3).join(COPY.punctuation.listJoin) })]);
+  return rows;
+}
+
 const TEMPLATES = {
+  earthevent(record, ctx, m, passInfo, T) {
+    const md = meta(record);
+    const kind = pick(md, 'kind');
+    const reported = pickNumber(md, 'reportedMs');
+    if (!T.lead[kind] || reported === null) return buildSentence(t(COPY.card.unknownKind, { name: displayName(record) }), []);
+    const km2 = pickNumber(md, 'sizeKm2');
+    return buildSentence(
+      t(T.lead[kind], { name: displayName(record), date: timeText.utcLong(reported) }),
+      [km2 !== null && km2 >= 1 ? t(T.size, { n: fmt.int(roughly(km2)) }) : null],
+    );
+  },
+
   storm(record, ctx, m, passInfo, T) {
     const md = meta(record);
     const key = stormStatusKey(md);
@@ -1004,7 +1048,7 @@ export function firstSentence(record, ctx, m, passInfo) {
 function comparisons(record, m) {
   const md = meta(record);
   // A storm is weather, standing on the Earth like a site: "0 km up" is a chip that says nothing.
-  const onTheGround = klassOf(record) === 'site' || klassOf(record) === 'storm';
+  const onTheGround = klassOf(record) === 'site' || klassOf(record) === 'storm' || klassOf(record) === 'earthevent';
   // Never the heliocentric distance: "8 light-minutes away" for an asteroid one AU from
   // the SUN is false, because the asteroid may be on the far side of it. A distance chip
   // is only written when the distance from the observer's own world is known.
@@ -1054,6 +1098,20 @@ export function rightNowFor(record, ctx) {
   return rightNowRows(record, m, nextPass(record, ctx, m));
 }
 
+/**
+ * An ended craft at a clock after its end (Cassini today): the day it ended, in words; else null.
+ * The row carries `endDate` (data/sample.js PAST_CRAFT, read on NASA's page for each). Inside its
+ * years the craft is drawn from its own path and `m.ok` is true, so this answers null there.
+ */
+export function endedWords(record, m) {
+  const end = pick(meta(record), 'endDate');
+  if (!end || (m && m.ok)) return null;
+  const ms = Date.parse(`${end}T00:00:00Z`);
+  if (!Number.isFinite(ms)) return null;
+  const tMs = m && Number.isFinite(m.tMs) ? m.tMs : Date.now();
+  return tMs >= ms ? timeText.utcLong(ms) : null;
+}
+
 function rightNowRows(record, m, passInfo) {
   const R = COPY.card.rows;
   const V = COPY.card.values;
@@ -1069,9 +1127,14 @@ function rightNowRows(record, m, passInfo) {
     return rows;
   }
   if (!m.ok) {
+    // A craft whose mission is over (internal #424): the day it ended, not a failed sum.
+    const ended = endedWords(record, m);
+    if (ended) { rows.push([R.ended, ended]); return rows; }
     rows.push([R.altitude, COPY.card.couldNotLook]);
     return rows;
   }
+  // An event on the ground: its report's rows. No height and no speed, as for a storm.
+  if (klassOf(record) === 'earthevent') return earthEventRows(record);
   if (isEarthFrame(m.frame) && klassOf(record) === 'storm') {
     // A storm's rows are the advisory's (data/parsers.js parseGdacsCyclones says what each field is):
     // what it was at the latest one, the one wind number GDACS gives and what that number covers,
@@ -1598,6 +1661,7 @@ export function seeItLine(record, ctx, m, passInfo) {
   const klass = klassOf(record);
   if (pick(meta(record), 'unplaceable')) return COPY.sky.nowhereToLook;
   if (klass === 'storm') return COPY.sky.storm;
+  if (klass === 'earthevent') return COPY.earthEvent.sky;
   // Standing still, whatever class it is: a dish, a landing site, a lightsaber in a case in Houston,
   // or a rocket before T-0 (standsStill). Without this a museum exhibit got "too far away to pick
   // out by eye", and a rocket on its pad got "Set where you are and this line will tell you where
@@ -1732,9 +1796,33 @@ export function classLine(record, m) {
  * Returns null when the record has nothing extra to admit, which is most of them. Exported for the
  * test (tests/test_deep_space.mjs reads the craft round other worlds through it).
  */
+/** Inside this of the Earth a two-body orbit round the Sun is not to be trusted: 0.05 au, the distance that makes an asteroid "potentially hazardous". */
+export const NEAR_EARTH_KM = 0.05 * 149597870.7;
+
+/** Whether this is an asteroid or comet drawn from its ellipse round the Sun while that close to the Earth. Exported for the test. */
+export function nearEarthOnEllipse(record, m) {
+  if (!record || !m || record.propagator !== 'kepler' || record.frame !== 'sun-inertial') return false;
+  const k = klassOf(record);
+  if (k !== 'asteroid' && k !== 'comet') return false;
+  if (!Number.isFinite(m.distEarthKm) || m.distEarthKm > NEAR_EARTH_KM) return false;
+  // Drawn from its own file right now? Then the Earth's pull is in the path.
+  const own = EPHEMERIS_OF.get(record.id);
+  if (own && Number.isFinite(m.tMs)) { try { if (own(m.tMs)) return false; } catch { /* the ellipse it is */ } }
+  return true;
+}
+
 export function honestyClause(record, m) {
   const md = meta(record);
   const C = COPY.cls;
+
+  // An event from EONET is one point and one date; say both, when it was read, and the publisher's caveat.
+  if (klassOf(record) === 'earthevent') {
+    const reported = pickNumber(md, 'reportedMs');
+    const read = pickNumber(md, 'readMs');
+    return reported !== null && read !== null
+      ? t(COPY.earthEvent.honesty, { date: timeText.utcLong(reported), read: timeText.utcLong(read) })
+      : null;
+  }
 
   // A storm's centre is measured at one advisory; say which, and how long before the moment shown.
   if (klassOf(record) === 'storm') {
@@ -1753,6 +1841,11 @@ export function honestyClause(record, m) {
     if (would) parts.push(t(COPY.card.wouldNeed, { wouldNeed: String(would) }));
     return parts.length ? parts.join(' ') : null;
   }
+
+  // A rock on a two-body orbit, close to the Earth (internal #298, TheSkyLive's own caveat): the
+  // ellipse leaves out the Earth's pull, which is what bends a close pass. Not said of a record
+  // drawn from its own path file at this moment (Apophis in 2029), where the pull is in the path.
+  if (nearEarthOnEllipse(record, m)) return C.nearEarthApprox;
 
   // Not yet in the public catalogue (spec 0026 req 15): the elements are the operator's own, so
   // the position is inferred whatever their age, and the card says where the number will come from.
@@ -1972,6 +2065,7 @@ function derivedDrawingLine(record, T) {
   }
   if (!klass) return null;
   if (klass === 'storm') return T.storm;
+  if (klass === 'earthevent') return COPY.earthEvent.drawn;
   let entry = null;
   try { entry = realModelFor(record); } catch { entry = null; }
   if (entry && entry.name) {
@@ -2267,6 +2361,11 @@ export function actionButtons(record, ctx, m) {
   } else {
     const fly = actionButton('fly', A.flyTo, A.flyToTitle, 'navigation', () => flyTo(record, ctx, m), true);
     fly.disabled = !m.ok;
+    // Nowhere to fly: say why on the switched-off control (docs/ui-guide.md §3, the standard
+    // states). An ended craft names its last day; its mission's events below are the way there.
+    const ended = endedWords(record, m);
+    if (ended) { fly.title = t(A.flyEnded, { date: ended }); fly.setAttribute('aria-label', fly.title); }
+    else if (fly.disabled) fly.title = A.flyNowhere;
     buttons.push(fly);
     const see = actionButton('see', A.seeShort, A.seeFromHereTitle, 'telescope', () => seeFromHere(record, ctx));
     see.disabled = !canSeeFromHere(record, m);
@@ -2423,7 +2522,7 @@ export function microLabel(record, m) {
       const world = worldName(parent);
       regime = world ? t(G.round, { world }) : null;
     }
-  } else if (klass === 'storm' || klass === 'site' || standsStill(record, m)) {
+  } else if (klass === 'storm' || klass === 'earthevent' || klass === 'site' || standsStill(record, m)) {
     const world = m.worldId && m.worldId !== 'earth' ? worldName(m.worldId) : null;
     regime = world ? t(G.onWorld, { world }) : null;
   } else if (isEarthFrame(m.frame)) {
@@ -2467,7 +2566,7 @@ export function heroKind(record, m) {
   }
   if (klass === 'star' || klass === 'dso') return klass;
   const moving = m && !standsStill(record, m);
-  if (moving && isEarthFrame(m.frame) && klass !== 'storm' && klass !== 'site') return 'orbiter';
+  if (moving && isEarthFrame(m.frame) && klass !== 'storm' && klass !== 'earthevent' && klass !== 'site') return 'orbiter';
   if ((klass === 'probe' || klass === 'telescope') && m && !isEarthFrame(m.frame)) return 'craft';
   return 'other';
 }
@@ -2650,7 +2749,7 @@ function rowsList(rows) {
 /** The hint at the right of "When you can see it": the next pass in UTC, or why there is none. */
 function seeHint(record, ctx, m, passInfo) {
   const S = COPY.card.sections;
-  if (!isEarthFrame(m.frame) || standsStill(record, m) || klassOf(record) === 'world' || klassOf(record) === 'storm') return null;
+  if (!isEarthFrame(m.frame) || standsStill(record, m) || klassOf(record) === 'world' || klassOf(record) === 'storm' || klassOf(record) === 'earthevent') return null;
   if (passInfo.state === PASS_OK) return t(S.passAt, { time: new Date(passInfo.pass.startMs).toISOString().slice(11, 16) });
   if (passInfo.state === PASS_NO_OBSERVER) return S.needsPlace;
   return ctx && ctx.observer && ctx.observer.source === 'guess' ? S.placeGuessed : null;
@@ -3145,8 +3244,12 @@ function render(record, ctx, opts = {}) {
 
   // 2. the three numbers, read off the card's own rows.
   const rows = rightNowRows(record, m, passInfo);
-  const heroes = heroNumbers(record, m, rows);
+  // An ended craft after its end has no numbers to lead with: three dashes said nothing (seen
+  // 2026-10-07 on Cassini's card). One line says when it ended instead (internal #424).
+  const ended = endedWords(record, m);
+  const heroes = ended ? [] : heroNumbers(record, m, rows);
   if (heroes.length) body.appendChild(heroBlock(heroes));
+  if (ended) body.appendChild(el('p', 'sr-card__sentence sr-card__ended', t(COPY.card.endedLine, { date: ended })));
 
   // 2b. a launch within a day counts down (public #289, ui/countdown.js): in the clock's own time,
   // as the scene is, with Launch Library's status and how old it is.
@@ -3188,6 +3291,9 @@ function render(record, ctx, opts = {}) {
 
   // 4b. the flood light, under the light it stands in for (internal #272).
   for (const n of floodControls(record, ctx)) body.appendChild(n);
+  // The Earth's card carries the legend of whatever map is laid over it (internal #386 item 1).
+  const over = overlayBlock(record, ctx);
+  if (over) body.appendChild(over);
 
   // 5. the sections, each opening in place.
   body.appendChild(moreSections(record, ctx, m, passInfo, rows, time, false, opts));
@@ -3227,6 +3333,35 @@ function paintMore(node) {
 }
 
 /** The Sun's card: how many of today's sunspot groups are drawn and whose list it is, or null. */
+/**
+ * The Earth data overlay on the globe, on the Earth's own card: its legend and its one sentence
+ * (ui/overlaylegend.js, the words the trip's stop card and What to show print). Without it an
+ * overlay chosen in What to show was colours with no key once that popover shut (internal #386).
+ * Above the sections, not inside one: a key nobody has to open. Null for any other record; an
+ * empty, hidden block when no overlay is up, so `sr:overlay` has something to fill.
+ * Exported for the test.
+ */
+export function overlayBlock(record, ctx) {
+  if (!record || record.id !== 'earth' || !ctx || typeof ctx.overlayState !== 'function' || typeof document === 'undefined') return null;
+  const box = el('div', 'sr-card__overlay');
+  box.appendChild(legendNode(null));
+  box.appendChild(el('p', 'sr-card__note sr-card__overlayline'));
+  paintOverlayBlock(box, ctx);
+  return box;
+}
+
+function paintOverlayBlock(box, ctx) {
+  let st = null;
+  try { st = ctx.overlayState(); } catch { st = null; }
+  const on = !!(st && st.id);
+  const [legend, line] = box.children;
+  paintLegend(legend, on ? st : null);
+  const words = on ? overlayLine(st) : '';
+  if (line.textContent !== words) line.textContent = words;
+  line.hidden = !words;
+  box.hidden = !on;
+}
+
 export function sunSpotsLine(ctx) {
   let st = null;
   try { st = ctx.sunDetail.state(); } catch { st = null; }
@@ -3272,6 +3407,13 @@ function subscribe(ctx) {
       const line = typeof document !== 'undefined' && document.querySelector('.sr-card__clouds');
       if (!line || !c || !c.liveClouds || current.record.id !== 'earth') return;
       try { line.textContent = c.liveClouds.line(c.clock.now()); } catch { /* keep the last line */ }
+    });
+    // The overlay's legend on the Earth's card: a map was chosen, arrived, failed or was taken away.
+    window.addEventListener('sr:overlay', () => {
+      const c = current && current.ctx;
+      const box = typeof document !== 'undefined' && document.querySelector('.sr-card__overlay');
+      if (!box || !c || typeof c.overlayState !== 'function') return;
+      try { paintOverlayBlock(box, c); } catch { /* keep the last legend */ }
     });
     // The aurora line, the same way: a forecast arrived, failed, or the clock moved away from it.
     window.addEventListener('sr:aurora', () => {

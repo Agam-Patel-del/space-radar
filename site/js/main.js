@@ -19,7 +19,7 @@ import { createHeroes, closeUpDistance, SELECTED_PX, warmModels } from './scene/
 import { limbFraming, fitDistance, discDistance, litOffset, groundDistanceKm, nightGroundPose, openingPlan, OPENING_KEY } from './scene/framing.js';
 import { createCameraRig, worldFramingDistance } from './scene/camera.js';
 import { createViewShift, MAX_SHIFT_FRACTION, PILL_GAP_PX } from './scene/viewshift.js';
-import { readMoment, writeMoment, bootLink, laterLink, linkChange, read as readUrlKeys, write as writeUrlState, clear as clearUrlState, stopIndex } from './ui/urlstate.js';
+import { readMoment, writeMoment, bootLink, laterLink, linkChange, read as readUrlKeys, write as writeUrlState, clear as clearUrlState, stopIndex, parseCam } from './ui/urlstate.js';
 import { guessObserver, roundPlace } from './sky/guessplace.js';
 import { COPY, CITIES, t as fill } from './copy/en.js';
 import { LAYERS, loadLayer } from './data/layers.js';
@@ -461,16 +461,45 @@ export async function boot({ setStatus } = {}) {
       return ctx.earthOverlay;
     })
     .catch((e) => { console.warn('the Earth overlays did not load', e); overlayImport = null; return null; }));
+  // THE WIND (internal #362) is one of the overlays to the visitor and a module of its own here:
+  // scene/wind.js, fetched when "Wind" is chosen, which then asks a NOAA-funded server for one
+  // forecast hour (data/wind.js). One overlay at a time: choosing it takes a GIBS map away.
+  /** Where the camera stands round its target, for a link's `cam` (ui/share.js shareState). */
+  ctx.camPose = () => {
+    const s = cameraRig.saveState();
+    const deg = 180 / Math.PI;
+    return { azimuthDeg: s.azimuth * deg, polarDeg: s.polar * deg, distanceKm: s.distance * stage.unitKm };
+  };
+  ctx.wind = null;
+  let windImport = null;
+  const WIND_OVERLAY = 'wind';
+  const wantWind = () => windImport || (windImport = import('./scene/wind.js')
+    .then((m) => {
+      ctx.wind = m.createWind({
+        earth: () => worlds.meshFor('earth'),
+        saveData: typeof navigator !== 'undefined' && shouldSaveData(navigator.connection),
+        reducedMotion: !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches),
+        onChange: tellOverlay,
+      });
+      return ctx.wind;
+    })
+    .catch((e) => { console.warn('the wind did not load', e); windImport = null; return null; }));
   const applyOverlay = (id) => {
     if (id === overlayAsked) return;
     overlayAsked = id;
-    if (!id && !ctx.earthOverlay) { tellOverlay(); return; }
-    wantOverlay().then((o) => { if (o) o.set(overlayAsked); else tellOverlay(); });
+    const windOn = id === WIND_OVERLAY;
+    if (windOn) wantWind().then((w) => { if (w) w.set(overlayAsked === WIND_OVERLAY); else tellOverlay(); });
+    else if (ctx.wind) ctx.wind.set(false);
+    const map = windOn ? null : id;
+    if (!map && !ctx.earthOverlay) { tellOverlay(); return; }
+    wantOverlay().then((o) => { if (o) o.set(overlayAsked === WIND_OVERLAY ? null : overlayAsked); else tellOverlay(); });
     tellOverlay();
   };
-  /** What is on the globe: scene/earthoverlay.js state(), or its stand-in while the module loads. */
-  ctx.overlayState = () => (ctx.earthOverlay ? ctx.earthOverlay.state()
-    : { id: overlayAsked, status: overlayAsked ? 'loading' : 'off' });
+  /** What is on the globe: the scene module's state(), or its stand-in while the module loads. */
+  ctx.overlayState = () => (overlayAsked === WIND_OVERLAY
+    ? (ctx.wind ? { ...ctx.wind.state(), id: WIND_OVERLAY } : { id: WIND_OVERLAY, kind: 'wind', status: 'loading' })
+    : ctx.earthOverlay ? ctx.earthOverlay.state()
+      : { id: overlayAsked, status: overlayAsked ? 'loading' : 'off' });
   ctx.setOverlay = (id) => {
     overlayOwn = id || null;
     const st = ctx.trip.state;
@@ -1694,6 +1723,7 @@ export async function boot({ setStatus } = {}) {
     if (plan.event) { ctx.wantMissions().then((m) => { if (!m || !m.openEvent(ctx, plan.event)) linkNote(ctx, COPY.mission.unknown, ['event']); }); return; }
     if (plan.at && plan.at.open) openAt(ctx, plan.at.open);
     else if (plan.at) ctx.deselect();
+    if (keys.cam) applyCam(ctx, keys.cam);
   });
 
   // THE URL IS THE STATE (spec 0017's rule, spec 0032's keys). Two more writers beside the moment,
@@ -2079,6 +2109,7 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     if (ctx.figures) ctx.figures.update(ctx.camera, ctx.renderer);
     if (ctx.portraits) ctx.portraits.update(ctx.camera, t, frameMs);
     if (ctx.earthOverlay) ctx.earthOverlay.update();
+    if (ctx.wind) ctx.wind.update();
     if (ctx.systems) {
       ctx.systems.setVisible(ctx.isLayerOn('systems'));
       ctx.systems.update(t, ctx.camera);
@@ -2329,6 +2360,33 @@ function applyUrlState(ctx, st) {
     return;
   }
   if (st.at) openAt(ctx, st.at);
+  if (st.cam) applyCam(ctx, st.cam);
+}
+
+/**
+ * A link's `cam` (internal #397): once the flight the link started has landed, stand where the
+ * link's camera stood round the same target. The key then leaves the address bar: from here on
+ * the camera is the visitor's, and a link copied later says where it is then (ui/share.js).
+ * A trip frames its own stops, so a link into one never carries `cam` (ui/urlstate.js laterLink).
+ */
+// Counted in frames, not in timers: the camera only moves on a frame, so "the flight has landed"
+// is "the rig has not been flying for this many frames in a row". Given up after twenty seconds.
+const CAM_QUIET_FRAMES = 20;
+const CAM_GIVE_UP_MS = 20000;
+function applyCam(ctx, text) {
+  const pose = parseCam(text);
+  clearUrlState(['cam']);
+  const rig = ctx.cameraRig;
+  if (!pose || !rig || typeof rig.flyTo !== 'function' || typeof requestAnimationFrame !== 'function') return;
+  const rad = Math.PI / 180;
+  const began = performance.now();
+  let quiet = 0;
+  const look = () => {
+    quiet = rig.state && rig.state.flying ? 0 : quiet + 1;
+    if (quiet < CAM_QUIET_FRAMES && performance.now() - began < CAM_GIVE_UP_MS) { requestAnimationFrame(look); return; }
+    rig.flyTo({ azimuth: pose.azimuthDeg * rad, polar: pose.polarDeg * rad, distance: pose.distanceKm / stage.unitKm, ms: 600 });
+  };
+  requestAnimationFrame(look);
 }
 
 /** @returns {boolean} whether the link named a trip this map has (and so is starting it). */

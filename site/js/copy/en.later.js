@@ -78,6 +78,7 @@ Object.assign(COPY, {
       sun: 'Star', planet: 'Planet', moon: 'Moon', station: 'Space station', satellite: 'Satellite', telescope: 'Space telescope',
       probe: 'Spacecraft', rocket: 'Rocket', launch: 'Launch', debris: 'Debris', asteroid: 'Asteroid', comet: 'Comet', site: 'Place', landing: 'Landing site',
       star: 'Star', exoplanet: 'Planet of another star', dso: 'Deep-sky object', storm: 'Tropical storm', oddity: 'Oddity',
+      earthevent: 'Event on Earth',
       blackhole: 'Black hole', pulsar: 'Pulsar', magnetar: 'Magnetar',
     },
     upNow: 'up now, {compass}',
@@ -88,6 +89,8 @@ Object.assign(COPY, {
     eventName: '{mission}: {title}',
     event: 'Mission event · {date}',
     eventNoDate: 'Mission event',
+    // One row for a constellation's satellites; {n} is how many the map holds.
+    group: 'Constellation · {n} satellites on the map · press to list them',
     nearMe: 'Near me tonight',
     nearMeSub: 'What is up in your sky',
   },
@@ -197,12 +200,26 @@ Object.assign(COPY, {
     noTrips: 'No trips finished yet.',
     forget: 'Forget me',
     forgetConfirm: 'Yes, forget',
-    forgetTitle: 'Clears the passport from this browser',
+    forgetTitle: 'Clears the passport and the sound choice from this browser',
     forgotten: 'Forgotten. This browser holds nothing now.',
     // The end card's stamp: "Trip 7 of 25 · 7 October 2026". {date} is the visitor's own day.
     stamp: 'Trip {n} of {total} · {date}',
     // A trip card's line for a trip left in the last 24 hours.
     resume: 'Continue from stop {n}',
+  },
+
+  // The Sources sheet's last section (ui/status.js; spec 0041 task 4, internal #437): what the site
+  // keeps in this browser, in the place that already says where everything comes from. Each line
+  // is held to the code by tests/test_passport.mjs and tests/test_place_privacy.mjs.
+  kept: {
+    title: 'What this site keeps on your device',
+    lines: [
+      'Your passport: the places you opened and the trips you finished.',
+      'Your sound and voice choice, and how you left the panels.',
+      'A copy of the data it last read, so the map opens without a connection.',
+    ],
+    place: 'Your place is rounded to a tenth of a degree and held only while this page is open.',
+    none: 'No account, no cookies, no analytics. Forget me, in the Passport, clears the passport and the sound choice.',
   },
 
   // Debris as a problem (ui/debris.js; the counting is data/satcat.js). Its sentences are filled
@@ -246,6 +263,10 @@ Object.assign(COPY, {
     // "From about 10 cm": NASA's Orbital Debris Program Office FAQ, read 2026-10-06 ("Large orbital
     // debris (> 10 cm) is tracked routinely by the U.S. Space Surveillance Network"),
     // https://orbitaldebris.jsc.nasa.gov/faq/. No other number in these sentences is written here.
+    // What is too small to track: ESA's modelled counts (ui/debris.js ESA_MODEL carries the numbers,
+    // the page and the day it was read). {mid} and {small} are millions.
+    untracked: 'Too small to track, by ESA’s model: about {mid} million pieces of 1 to 10 cm and {small} million of 1 mm to 1 cm, as of {when}. An estimate, not a count.',
+    untrackedSource: 'ESA space environment statistics',
     honesty: 'Counted from CelesTrak’s catalogue as read on {date}: what radar can track, from about 10 cm across. Smaller pieces are far more numerous and are in no catalogue. Where a dot is along its orbit is illustrative.',
   },
 
@@ -265,6 +286,8 @@ Object.assign(COPY, {
     dso: 'Deep-sky object',
     exotic: 'Extreme object',
     storm: 'Tropical cyclone',
+    // A wildfire, an erupting volcano or an iceberg from NASA's EONET (data/eonet.js).
+    earthevent: 'Event on Earth',
     // Not a physical class -- a curatorial one. A golf ball, a car and a photograph have nothing
     // in common except that somebody sent them and nobody had to.
     oddity: 'Oddity',
@@ -435,6 +458,19 @@ Object.assign(COPY, {
       modelled: 'A weather model fed with measurements, not a direct picture.',
     },
     credit: 'Data: {credit}, through NASA GIBS. A map of data, not a photograph.',
+    // The wind (scene/wind.js, data/wind.js): NOAA's forecast model, drawn as moving streaks.
+    wind: {
+      title: 'Wind',
+      loading: 'Asking for the wind field.',
+      failed: 'The wind field did not arrive. The globe is as it was.',
+      what: 'The wind ten metres above the ground; colour is its speed.',
+      dated: 'The forecast is for {date}, {time} UTC.',
+      mean: 'About {mean} m/s on average, up to {max}.',
+      sped: 'The streaks move {n} hours of wind in a second.',
+      spedDay: 'The streaks move a day of wind in a second.',
+      still: 'Each streak is a piece of the flow, standing still.',
+      credit: 'Data: {credit}. A weather model, not a measurement.',
+    },
     legendAria: '{title}, from {low} to {high} {unit}',
     legendHigh: '{high} {unit}',
   },
@@ -523,6 +559,8 @@ Object.assign(COPY, {
 
   // Spec 0013 requirement 4, and spec 0001 principle 2 made visible.
   cls: {
+    // An asteroid or comet on its two-body ellipse while within 0.05 au of the Earth (ui/cards.js nearEarthOnEllipse).
+    nearEarthApprox: 'This close to the Earth its place is approximate: the orbit drawn is round the Sun alone and leaves out the Earth’s pull.',
     label: 'How we know where it is',
     measured: 'measured position',
     inferred: 'position propagated from elements {n} {unit} old',
@@ -632,6 +670,12 @@ Object.assign(COPY, {
     captionTitle: 'The strip with the name, the date and the address',
     save: 'Save picture',
     saveTitle: 'Save what is inside the frame as a JPEG',
+    saveTitlePng: 'Save what is inside the frame as a PNG',
+    lens: 'Lens',
+    lensValue: '{n}°',
+    lensTitle: 'Field of view, {n} degrees. Narrow is a long lens; wide takes in more',
+    png: 'PNG',
+    pngTitle: 'Save without loss, as a larger file',
     done: 'Leave photo mode',
     making: 'Making the picture',
     saved: 'Picture saved',
@@ -859,7 +903,31 @@ Object.assign(COPY, {
   // in order while the sentence stays under 160 characters, and never invents a number.
   // The "why now" clause is first in every list, per spec 0013's template table.
   // ------------------------------------------------------------------------------------
+  // The card of a wildfire, a volcano or an iceberg (ui/cards.js; data/eonet.js says what each
+  // field is). Nothing here is a number: the dates, the size and the names are EONET's.
+  earthEvent: {
+    kinds: { wildfire: 'Fire', volcano: 'Erupting volcano', iceberg: 'Iceberg' },
+    rows: { kind: 'What it is', reported: 'Last report', since: 'Erupting since', first: 'First reported', size: 'Size', where: 'Where', by: 'Reported by' },
+    sizeValue: '{n} km²',
+    sizeSmall: 'under 1 km²',
+    // {agencies} are the ids EONET gives its sources (IRWIN, GDACS, SIVolcano, NATICE).
+    by: '{agencies}, through NASA EONET',
+    sky: 'It is on the ground. From orbit a fire is a plume of smoke, a volcano a column of ash, an iceberg a white slab on dark water.',
+    drawn: 'drawn as a mark at its last reported place; its extent on the ground is not drawn',
+    // The honesty line: what the point is, whose it is, and the publisher's own caveat in plain words.
+    honesty: 'One point from NASA’s EONET, last reported {date} and read {read}. For looking, not an official record of where or when.',
+  },
+
   templates: {
+    // A wildfire, a volcano or an iceberg's first sentence (data/eonet.js): what, and as of when.
+    earthevent: {
+      lead: {
+        wildfire: '{name} is a fire that was here at its last report, {date}',
+        volcano: '{name} has been erupting since {date}',
+        iceberg: '{name} was here at its last report, {date}',
+      },
+      size: 'about {n} km² at that report',
+    },
     // A tropical cyclone's first sentence (2026-09-28). "whose centre was here" and not "is here":
     // the point is the latest advisory's, and the card's honesty line says how old that is.
     storm: {

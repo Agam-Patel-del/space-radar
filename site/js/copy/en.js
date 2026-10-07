@@ -616,6 +616,8 @@ export const COPY = {
     prev: 'Earlier event',
     next: 'Later event',
     when: '{date}, {time} UTC',
+    // An event that has not happened yet (Apophis in 2029): a date somebody worked out.
+    predicted: '{when} (predicted)',
     go: 'Go to this moment',
     goTitle: 'Set the clock to this moment and frame it',
     here: 'The clock is at this moment. Live brings it back.',
@@ -689,8 +691,15 @@ export const COPY = {
     readLabel: '{text}. {hold}',
     // The step ‹ and › take (ui/timepill.js): a button that cycles a minute, an hour, a day, and
     // sets how far the timeline shows (ui/scrubber.js: two hours, a day, a month).
-    units: { minute: '1 min', hour: '1 h', day: '1 day' },
-    unitWords: { minute: 'one minute', hour: 'one hour', day: 'one day' },
+    units: { minute: '1 min', hour: '1 h', day: '1 day', event: 'Event' },
+    unitWords: { minute: 'one minute', hour: 'one hour', day: 'one day', event: 'one event' },
+    // With the step at "Event", ‹ and › go to the mark before and after on the timeline.
+    prevEvent: 'The event before',
+    nextEvent: 'The next event',
+    noEventBack: 'No earlier event on the timeline.',
+    noEventOn: 'No later event on the timeline.',
+    // A mark for one of the Moon's four named phases (ui/scrubber.js moonMarks).
+    moonMark: 'The Moon is {phase}, {date}',
     unitTitle: 'Steps of {unit}. Press for {next}',
     // The timeline (ui/scrubber.js). It is a slider: its value is the readout's words.
     tapeLabel: 'Timeline. Drag it, or use the arrow keys',
@@ -1151,6 +1160,7 @@ export const COPY = {
       crew: 'People aboard',
       operator: 'Operated by',
       launched: 'Launched',
+      ended: 'Ended',
       period: 'One lap takes',
       location: 'Where it stands',
       onWorld: 'Standing on',
@@ -1253,11 +1263,15 @@ export const COPY = {
     wouldNeed: 'It would take {wouldNeed}.',
     oftenSaidLabel: 'Often said',
     notApplicable: 'Not something this object has',
+    // In place of the three numbers, on the card of a craft whose mission is over.
+    endedLine: 'Its mission ended on {date}. Its events, below, go back to it.',
     noPosition: 'There is no position for this object right now.',
 
     actions: {
       flyTo: 'Fly to it',
       flyToTitle: 'Move the camera to this object',
+      flyEnded: 'It ended on {date}. Choose an event of its mission to go there',
+      flyNowhere: 'There is no position for this object at this moment',
       seeFromHere: 'See it from here',
       seeFromHereTitle: 'Look up from your own place on Earth',
       tellMeBefore: 'Tell me before',

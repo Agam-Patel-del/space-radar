@@ -37,6 +37,8 @@ source, 3D model, texture, picture, tile set, sound or font that ships without i
 | Exoplanets | NASA Exoplanet Archive | public; cite the DOI | [4.7](#47-nasa-exoplanet-archive--confirmed-planets) |
 | Today's clouds | NASA GIBS (GOES, Himawari) | open; acknowledgement asked | [4.13](#413-nasa-gibs--todays-clouds-2026-09-28) |
 | Storms, lightning | GDACS; NOAA nowCOAST | CC BY 4.0; public domain | [4.14](#414-gdacs--tropical-cyclones-2026-09-28), [4.17](#417-noaa-nowcoast--lightning-2026-10-03) |
+| Fires, volcanoes and icebergs | NASA EONET | NASA service; its disclaimer | [4.20](#420-nasa-eonet--fires-volcanoes-and-icebergs-2026-10-07) |
+| The wind | NOAA/NCEP GFS, through PacIOOS ERDDAP | free to use and redistribute | [4.21](#421-noaa-gfs-through-pacioos--the-wind-2026-10-07) |
 | Moon and Mars close-up tiles and relief; the Earth close up | NASA Solar System Treks; USGS Astrogeology; NASA GIBS | NASA content; HRSC's share of Mars's relief CC BY-SA 3.0 IGO | [4.16](#416-nasa-solar-system-treks--the-moon-and-mars-close-up-2026-10-03) |
 | Countries and seas | Natural Earth | public domain | [4.15](#415-natural-earth--the-country-or-sea-under-a-satellite-2026-09-29) |
 | Dishes, crews, observatories | NASA DSN Now; Open Notify; Wikidata | see the section; CC0 for Wikidata | [4.3](#43-nasa--dsn-now), [4.18](#418-the-sources-the-harvester-reads) |
@@ -96,7 +98,9 @@ In `site/js/ui/cards.js` (`ICONS`, where `chevron` is Lucide's `chevron-right`):
 `panel-bottom-close`, `panel-bottom-open`, `compass`, and for present mode (read 2026-10-06)
 `presentation`, `maximize`, `minimize`, `timer`, `house`. In `site/js/ui/sharesheet.js`: `x`, `share`,
 `copy`, `download`, `file-text` (its `file`), `mail`, `crop`, `code`, `chevron-down`. In
-`site/js/ui/photomode.js`: `x`, `download`. In `site/js/ui/embed.js`: `external-link`. In
+`site/js/ui/photomode.js`: `x`, `download`. In `site/js/ui/searchrows.js` (`ROW_ICONS`, from
+`lucide-static` 0.544.0, read 2026-10-07): `satellite`, `rocket`, `globe`, `moon`, `star`, `sun`,
+`sparkles`, `map-pin`, `tornado`, `flag`. In `site/js/ui/embed.js`: `external-link`. In
 `site/js/ui/rail.js`: `share`, `ellipsis-vertical`, `eye-off`. In `site/js/ui/keyhint.js`: `move`,
 `mouse`. The only change is the
 stroke, 1.75 instead of Lucide's default 2, which `docs/ui-guide.md` §3.16 sets for every icon in
@@ -1304,6 +1308,52 @@ All are NASA data products. NASA's data use guidance
 read 2026-10-05) says data from a NASA-led mission are CC0 unless marked otherwise, with "no
 restrictions on the use of these data", and asks that the data sets be cited, which this table does. The stop card and the panel print the legend, the day the picture is of, how it
 was made and this credit.
+
+### 4.20 NASA EONET — fires, volcanoes and icebergs (2026-10-07)
+
+`site/js/data/eonet.js` asks NASA's Earth Observatory Natural Event Tracker
+(<https://eonet.gsfc.nasa.gov/docs/v3>, read 2026-10-07) for its open wildfires with a report in
+the last thirty days, and its open volcanoes and sea-ice events, when a visitor ticks "Fires,
+volcanoes and icebergs" in What to show, and never at boot. Two requests, no key, no credentials,
+no referrer. Measured 2026-10-07 with `Origin: https://www.spaceradar.ai`: both answered
+`Access-Control-Allow-Origin: *`, 130 kB (50 fires) and 158 kB (32 volcanoes, 33 icebergs), in 1
+to 4 s. The row is `registry/weather.yaml` `earth-events`.
+
+EONET publishes no licence beyond its disclaimer (<https://eonet.gsfc.nasa.gov/what-is-eonet>, read
+the same day): "All EONET metadata and services are intended to be used for visualization and
+general information purposes only and should not be construed as 'official' with regards to
+spatial or temporal extent." Each card says so in its own words, with the date of the event's
+last report and the day it was read. The events themselves are reported by others, whom EONET
+names on each one and the card repeats: IRWIN (the US Integrated Reporting of Wildland Fire
+Information), GDACS, the Smithsonian Institution's Global Volcanism Program, and the US National
+Ice Center. Only an event's title, place, date and reported size are shown; nothing is copied
+into this repository except nine events in `tests/fixtures/eonet/` for the tests.
+
+### 4.21 NOAA GFS through PacIOOS — the wind (2026-10-07)
+
+`site/js/data/wind.js` asks the PacIOOS ERDDAP server
+(<https://pae-paha.pacioos.hawaii.edu/erddap/griddap/ncep_global.html>, read 2026-10-07) for one
+forecast hour of the wind ten metres above the ground, every fifth degree over the whole globe
+(37 × 72 points, two components), when a visitor chooses "Wind" under Earth data in What to show,
+and never at boot. One request, no key, no credentials, no referrer. Measured 2026-10-07 with
+`Origin: https://www.spaceradar.ai`: `Access-Control-Allow-Origin: *`, gzip, 169 kB of JSON as
+text, about 2 s. `site/js/scene/wind.js` draws it as moving streaks.
+
+The data is the NOAA/NCEP Global Forecast System, a numerical weather model ("8-day, 3-hourly
+forecast for the globe at approximately 50-km or 0.5-deg resolution"), served by the Pacific
+Islands Ocean Observing System at the University of Hawaii, which NOAA funds through IOOS. The
+dataset's licence attribute, in full: "The data may be used and redistributed for free but is not
+intended for legal use, since it may contain inaccuracies. Neither the data Contributor,
+University of Hawaii, PacIOOS, NOAA, State of Hawaii nor the United States Government, nor any of
+their employees or contractors, makes any warranty, express or implied, including warranties of
+merchantability and fitness for a particular purpose, or assumes any legal liability for the
+accuracy, completeness, or usefulness, of this information." The legend's sentence names the
+model, the forecast hour and the server, and says it is a model and not a measurement. Nothing is
+copied into this repository except four rows in `tests/fixtures/wind/head.json`.
+
+Tested the same day and not used: NOAA CoastWatch's ERDDAP copy of the dataset (no
+`Access-Control-Allow-Origin` header), NOAA NOMADS (GRIB2 files; its filter script did not
+answer), and Open-Meteo (its free API is for non-commercial use only).
 
 ## 4.6 Third-party trademarks the app names or draws
 
