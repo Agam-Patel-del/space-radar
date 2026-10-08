@@ -46,9 +46,12 @@ SITE = ROOT / "site"
 TEMPLATES = ROOT / "templates"
 DEFAULT_HOST = "https://www.spaceradar.ai"
 SAFE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-ICON = ("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' "
-        "cy='16' r='9' fill='%231B4F8A'/><circle cx='16' cy='16' r='13' fill='none' stroke='%23FF9F43' "
-        "stroke-width='1.5' stroke-dasharray='3 4'/></svg>")
+ICON = ("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
+        "<rect width='64' height='64' rx='12.5' fill='%230B0E14'/>"
+        "<circle cx='32' cy='32' r='14.38' fill='%232E6FB8'/>"
+        "<path d='M39.82 19.94A16.38 16.38 0 0 0 25.51 44.83A14.38 14.38 0 0 0 39.82 19.94Z' fill='%23123255'/>"
+        "<path d='M10.09 35.86A22.25 22.25 0 0 1 49.04 17.7' stroke='%23FF9F43' stroke-width='5.25' "
+        "stroke-linecap='round' fill='none'/></svg>")
 
 # What the share pictures under site/og/ show. A trip's picture is used only where its caption
 # fits the object (the Moon's landings, the crewed stations); the rest share the site's own card.
