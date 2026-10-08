@@ -1568,7 +1568,7 @@ export const COPY = {
       site: 'a generic ground site',
       star: 'a point of light, sized by how bright it looks from where you are',
       exoplanet: 'a mark at its star — the orbit itself is far too small to draw',
-      dso: 'a soft glow at its measured distance, as wide as it measures; its true shape is not drawn',
+      dso: 'a soft glow in the manner of its kind at its measured distance, as wide as it measures; the pattern in it is illustrative and its true shape is not drawn',
       exotic: 'a ring at its measured distance; a black hole has no shape to draw and a pulsar is far too small',
       exoticStar: 'a ring at its measured distance; the star itself is a point at this scale',
     },
@@ -1618,6 +1618,19 @@ export const COPY = {
     // photograph of it would be, not dimmed by its distance from the Sun (Saturn gets 1/90 of the
     // Earth's sunlight). scene/worlds.js says why; this is the card saying it.
     worldLit: 'lit as a camera exposed for its own sunlight would show it',
+    // 2026-10-08 (public #404, #411, #417): where a world is drawn knowingly unlike its data. Each
+    // is added after the world's "drawn as" line (scene/worlds.js worldRecords `departure`).
+    // 2026-10-08 (public #426): a pulsar's blink and a black hole's picture, on the object's own card.
+    exoticDeparture: {
+      pulseSlowed: 'its blink is drawn {n} times slower than it turns, so that an eye can follow it',
+      pulseTrue: 'its blink is drawn at the rate it turns',
+      portrait: 'while this card is open its picture is drawn at its place, far larger than it would look from here',
+    },
+    worldDeparture: {
+      mercury: 'on a larger screen its relief is from MESSENGER\u2019s elevation model, drawn {steep} times steeper than measured so that crater rims catch the light',
+      venus: 'the glow round its edge and past its day side stands for a deep haze; how thick it is drawn and how far it reaches are illustrative',
+      saturn: 'its bands are drawn with {contrast} times the contrast its map has, an adjustment of ours; \u201cAs Hubble saw it\u201d is not adjusted',
+    },
     // ...and the Moon's night side, lit by the Earth (scene/worlds.js earthshineShare), is drawn
     // brighter than that camera would catch it. {n} is EARTHSHINE_GAIN.
     worldEarthshine: 'its dark side glows with earthshine, the Earth’s own light, drawn {n} times brighter than that camera would catch it, about as the eye sees it',
@@ -1704,7 +1717,8 @@ export const COPY = {
     // Spec 0037: the eclipse stops' honesty line, under the instant. Generated, never typed in the
     // registry. The first is the shader drawing; the second is the frame latch having turned it off
     // on a slow device (scene/quality.js), where the timing is still right and the picture is not.
-    eclipseLine: "Shadow computed from the Moon's and the Sun's positions; timing from Astronomy Engine, to about a minute.",
+    // 2026-10-08 (public #273): the two thin lines and the band are drawings on computed places, and say so.
+    eclipseLine: "Shadow computed from the Moon's and the Sun's positions; timing from Astronomy Engine, to about a minute. The thin lines and the pale band mark the shadow's edges and its core's path: lines on a map, not light.",
     eclipseLineLatched: 'The shadow is not drawn on this device; the timing is right.',
     // The copper of a totally eclipsed Moon is a constant tint (scene/worlds.js uUmbraTint), not
     // sunlight bent through the Earth's air, and the lunar stop says so.

@@ -311,7 +311,6 @@ export async function boot({ setStatus } = {}) {
         skyGroup: starfield.group,
         look: exposure.look(),
         saveData: typeof navigator !== 'undefined' && shouldSaveData(navigator.connection),
-        onPicture: () => dsoGlow.setPictured(nebulae.loaded()),
       });
       nebulae.setSkyOpacity(skyStrength);
       nebulae.setSkyVisible(!(ctx.latch && ctx.latch.latched));
@@ -550,6 +549,32 @@ export async function boot({ setStatus } = {}) {
   const wantPortraits = () => portraitsImport || (portraitsImport = import('./scene/portraits.js')
     .then((m) => { ctx.portraits = m.createPortraits(scene); return ctx.portraits; })
     .catch((e) => { console.warn('the black hole pictures did not load', e); portraitsImport = null; return null; }));
+  // OUTSIDE A TRIP TOO (public #426, 2026-10-08): the picture is drawn while the black hole's own
+  // card is open on a rung of the ladder, and the card says it is drawn far larger than life
+  // (data/layers.js exoticDeparture). In a trip the trip decides: a stop without `portrait: true`
+  // shows none, whatever is selected.
+  let tripPortrait = '';
+  let tripUp = false;
+  let cardPortrait = '';
+  function syncPortrait() {
+    const want = tripUp ? tripPortrait : cardPortrait;
+    if (want === portraitAsked) return;
+    portraitAsked = want;
+    if (want) wantPortraits().then((p) => { if (p && portraitAsked === want) p.show(ctx.recordById(want)); });
+    else if (ctx.portraits) ctx.portraits.clear();
+  }
+  window.addEventListener('sr:select', (e) => {
+    const record = e && e.detail;
+    cardPortrait = record && record.klass === 'exotic' && record.meta && record.meta.image && record.meta.image.file ? record.id : '';
+    syncPortrait();
+  });
+  // A PULSAR'S PULSE (scene/pulsars.js): asked for the first time the exotics are drawn on a rung
+  // of the ladder, from the frame loop.
+  ctx.pulsars = null;
+  let pulsarsImport = null;
+  ctx.wantPulsars = () => pulsarsImport || (pulsarsImport = import('./scene/pulsars.js')
+    .then((m) => { ctx.pulsars = m.createPulsars(scene); ctx.pulsars.setRecords(ctx.recordsFor('exotics')); return ctx.pulsars; })
+    .catch((e) => { console.warn('the pulsars\u2019 pulses did not load', e); return null; }));
   ctx.portraitLine = (id) => {
     const record = ctx.recordById(id);
     const image = record && record.meta && record.meta.image;
@@ -581,12 +606,9 @@ export async function boot({ setStatus } = {}) {
         ctx.wantNebulae().then((n) => { if (n && typeof n.prefetch === 'function') n.prefetch(ids); });
       }
     }
-    const portrait = tripping && st.portrait ? st.portrait.id : '';
-    if (portrait !== portraitAsked) {
-      portraitAsked = portrait;
-      if (portrait) wantPortraits().then((p) => { if (p && portraitAsked === portrait) p.show(ctx.recordById(portrait)); });
-      else if (ctx.portraits) ctx.portraits.clear();
-    }
+    tripPortrait = tripping && st.portrait ? st.portrait.id : '';
+    tripUp = !!tripping;
+    syncPortrait();
     if (tripping && st.wants && st.wants.figures) ctx.wantFigures();
     if (tripping && st.wants && st.wants.overlay) wantOverlay();
     if (tripping && st.wants && st.wants.spaceWeather) wantSpaceWeather();
@@ -1963,7 +1985,10 @@ function createQuality(ctx, renderer, starfield, worlds) {
   });
   // How many worlds may keep a map of their own on this tier (scene/worlds.js MAPS_HELD, internal #157).
   const holdFor = (tier) => worlds.setMapsHeld(MAPS_HELD[Math.min(Math.max(0, tier), MAPS_HELD.length - 1)]);
+  // Mercury's relief (scene/worlds.js THE RELIEF): tier 1 and up, and never under the frame latch.
+  const reliefFor = (tier) => worlds.setRelief(tier >= 1 && !tiers.latched);
   holdFor(pick.tier);
+  reliefFor(pick.tier);
   const say = () => window.dispatchEvent(new CustomEvent('sr:tier', { detail: api.describe() }));
   // Spec 0065: a close world drawn from the missions' own map tiles. OFF THE FIRST VISIT, like the
   // aurora: scene/tiles.js and its two helpers are imported only once a world is PLANET_TILES_AT of
@@ -2033,12 +2058,12 @@ function createQuality(ctx, renderer, starfield, worlds) {
     /** Every frame, from startLoop, after the latch has been fed. */
     frame(frameMs, nowMs, latched) {
       const up = promoter.push(frameMs, nowMs, latched);
-      if (up !== null) { tiers.setTier(up); holdFor(up); if (planetTiles) planetTiles.setTier(up); say(); }
+      if (up !== null) { tiers.setTier(up); holdFor(up); reliefFor(up); if (planetTiles) planetTiles.setTier(up); say(); }
       if (planetTiles) planetTiles.frame(nowMs);
     },
     tick(nowMs) { tiers.tick(nowMs); planetTilesWanted(); sunWanted(); },
     /** The frame latch tripped: back to the boot maps, for good. */
-    latch() { tiers.latch(); holdFor(0); if (planetTiles) planetTiles.latch(); if (ctx.sunDetail) ctx.sunDetail.latch(); say(); },
+    latch() { tiers.latch(); holdFor(0); worlds.setRelief(false); if (ctx.dsoGlow) ctx.dsoGlow.setMarks(false); if (planetTiles) planetTiles.latch(); if (ctx.sunDetail) ctx.sunDetail.latch(); say(); },
     /**
      * What the maps hold on the GPU now, by arithmetic from registry/textures.yaml (gpuMiB: pixels,
      * four bytes, a third for mipmaps), beside the renderer's own count of textures. `window.spaceRadar.gpu()`.
@@ -2078,6 +2103,8 @@ const SYSTEM_RINGS = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 
 
 function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfield, heroes, lod }) {
   let last = performance.now();
+  let picturedAt = 0;
+  let picturedKey = '';
   let sinceLayerUpdate = 0;
   // The frame-rate latch (spec 0026 req 18): twenty-frame median over 33 ms for three seconds ->
   // one device pixel per CSS pixel and no Milky Way picture, once, said in the panel.
@@ -2243,6 +2270,11 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     }
     if (ctx.figures) ctx.figures.update(ctx.camera, ctx.renderer);
     if (ctx.portraits) ctx.portraits.update(ctx.camera, t, frameMs);
+    {
+      const exoticsOn = isLadderStage(stage.worldId) && ctx.isLayerDrawable(LAYERS.find((l) => l.id === 'exotics'));
+      if (ctx.pulsars) ctx.pulsars.update(ctx.camera, ctx.renderer, exoticsOn, nowReal);
+      else if (exoticsOn) ctx.wantPulsars(); // asks once: the promise is kept
+    }
     if (ctx.earthOverlay) ctx.earthOverlay.update();
     if (ctx.wind) ctx.wind.update();
     if (ctx.systems) {
@@ -2258,6 +2290,15 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
       if (ctx.galaxy) ctx.galaxy.setAndromedaShare(1 - ctx.nebulae.drawn('dso-m31'));
       // Her two companions' ellipses step back with it: the photograph holds them (scene/dsoglow.js).
       if (ctx.dsoGlow) ctx.dsoGlow.setShapedShare(1 - ctx.nebulae.drawn('dso-m31'));
+      // A glow gives way to a photograph only while the photograph is being drawn (scene/dsoglow.js):
+      // off the line of sight from the Sun the picture fades and the mark of its kind comes back.
+      // Asked four times a second; the glow's buffer is rewritten only when the answer changes.
+      if (ctx.dsoGlow && nowReal - picturedAt > 250) {
+        picturedAt = nowReal;
+        const now = ctx.nebulae.loaded().filter((id) => ctx.nebulae.drawn(id) > 0.3);
+        const key = now.join(' ');
+        if (key !== picturedKey) { picturedKey = key; ctx.dsoGlow.setPictured(now); }
+      }
     }
     if (ctx.otherLight.layer) ctx.updateOtherLight();
     if (ctx.starDisc) {
