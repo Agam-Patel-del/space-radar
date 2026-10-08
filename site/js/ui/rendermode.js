@@ -2,6 +2,7 @@
 // time, on a clock of its own, for tools/render-trip.mjs to photograph (spec 0070).
 //
 // Contract exports: renderOptions(search) -> opts | null        whether, and how, to render
+//                   createFilmClock(opts, g?) -> { time, advance, settle, ... }  the clock alone (`&clock=1`)
 //                   createVirtualTime(g, opts) -> { step, redraw, jumpTo, now, dateNow, real }
 //                   install(opts, g?) -> mode { attach(ctx), ready, frame(n), ... }   (window.__srRender)
 //                   truthLine(tour, epochMs), tripUrl(id), cardOpacity(...), lowerThird(...)
@@ -68,6 +69,9 @@ export function renderOptions(search) {
     fps: fps === 60 || fps === 30 || fps === 24 || fps === 25 ? fps : 30,
     epochMs: Number.isFinite(at) && at > 0 ? at : null,
     captions: q.get('captions') === '1',
+    // `&clock=1`: the film's clock and nothing filmed. A tool that films something other than a
+    // trip drives the frames itself through `window.__srRender.film` (advance, settle, time).
+    clockOnly: q.get('clock') === '1',
     maxStops: Number.isInteger(stops) && stops > 0 ? stops : 0,
   };
 }
@@ -248,10 +252,15 @@ function el(tag, className, text) {
 }
 
 /**
- * Take over time and start counting what is in flight. Call before anything else in boot() asks
- * what time it is. Returns the mode; attach(ctx) once the trip exists.
+ * The film's clock, and the count of what is in flight: everything a frame-by-frame render needs
+ * and nothing about what is filmed. Takes over what the page calls time (createVirtualTime) and
+ * wraps every way a picture can still be loading, so `advance()` is "one frame later, and
+ * finished". install() below films a trip on it; `?render=1&clock=1` hands it to a tool that
+ * films something else (`window.__srRender.film`).
+ * Call before anything else in boot() asks what time it is.
+ * @returns {{ fps, stepMs, epochMs, time, realWait, settle, advance, pending: () => number }}
  */
-export function install(opts, g = window) {
+export function createFilmClock(opts, g = window) {
   const fps = opts.fps;
   const stepMs = 1000 / fps;
   // To the second: the truth line says the minute, and a render resumed after a crash is handed
@@ -367,6 +376,17 @@ export function install(opts, g = window) {
     }
   }
 
+  return { fps, stepMs, epochMs, time, realTick, realWait, settle, advance, pending: () => pending };
+}
+
+/**
+ * Film a trip: the clock above, and the trip's own phases written down by frame. Returns the
+ * mode; attach(ctx) once the trip exists.
+ */
+export function install(opts, g = window) {
+  const film = createFilmClock(opts, g);
+  const { fps, stepMs, epochMs, time, realWait, settle, advance } = film;
+
   // ---------------------------------------------------------------- the film
   const titleFrames = Math.round(TITLE_S * fps);
   const endFrames = Math.round(END_S * fps);
@@ -399,6 +419,7 @@ export function install(opts, g = window) {
     // 'installed' -> 'layers' -> 'warming' -> 'faces' -> 'settling' -> 'ready', or 'failed'.
     stage: 'installed',
     warmed: 0,
+    film,
     attach,
     frame,
     /** The thumbnail's dressing on (or off) over the frame that is up: the tool photographs it between two frames. */
@@ -407,7 +428,7 @@ export function install(opts, g = window) {
     describe: () => ({
       trip: tour ? tour.id : null, title: tour ? tour.title : null, fps, epochMs, titleFrames, endFrames,
       totalFrames: mode.totalFrames, done: mode.done, stops: stops.map((s) => ({ ...s })), beds: beds.slice(),
-      truth: tour ? truthLine(tour, epochMs) : '', pending,
+      truth: tour ? truthLine(tour, epochMs) : '', pending: film.pending(),
       stage: mode.stage, warmed: mode.warmed, warmFrames: Math.round(WARM_S * fps), error: mode.error,
     }),
   };
@@ -579,6 +600,7 @@ export function install(opts, g = window) {
   function attach(context) {
     ctx = context;
     ctx.renderMode = mode;
+    if (opts.clockOnly) { mode.ctx = ctx; mode.stage = 'clock'; mode.ready = Promise.resolve(null); return mode; }
     ctx.trip.onChange(onTrip);
     mode.ready = warmUp().catch((e) => { mode.error = String((e && e.message) || e); mode.stage = 'failed'; throw e; });
     // Never an unhandled rejection: the boot panel would say "Something broke" over the scene.
@@ -603,7 +625,7 @@ export function install(opts, g = window) {
     if (endAt !== null && mode.totalFrames === null) mode.totalFrames = endAt + endFrames;
     if (mode.totalFrames !== null && k + 1 >= mode.totalFrames) mode.done = true;
     const st = ctx.trip.state;
-    return { n: k, done: mode.done, totalFrames: mode.totalFrames, phase: st.phase, index: st.index, stopId: st.stopId, pending };
+    return { n: k, done: mode.done, totalFrames: mode.totalFrames, phase: st.phase, index: st.index, stopId: st.stopId, pending: film.pending() };
   }
 
   g.__srRender = mode;
