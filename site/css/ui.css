@@ -912,6 +912,10 @@ html.sr-compact .sr-status {
 /* A photograph of the object, where one exists. Two of the exotics have been photographed and the
    pictures ship under CC BY 4.0, which asks for the credit "in a clear and readable manner to all
    users". So the caption is part of the figure, at the 13 px floor, never a tooltip or a hover. */
+.sr-card__figure {
+  margin: 0 0 var(--sp-3);
+}
+
 .sr-card__photo {
   display: block;
   width: 100%;
@@ -1169,6 +1173,19 @@ html.sr-compact .sr-status {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* "Is this what space looks like?" (internal #250): a kind of picture, then what it is. */
+.sr-status__lookkinds,
+.sr-status__lookkinds dd {
+  margin: 0;
+}
+
+.sr-status__lookkind {
+  font-size: var(--sr-fs-sm);
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--sr-text);
 }
 
 .sr-source {
@@ -5710,6 +5727,15 @@ html.sr-phone.sr-card-open .sr-toast {
 html.sr-phone .sr-scenenote {
   top: var(--sr-top-end);
   max-width: calc(100vw - 2 * var(--sp-4));
+}
+
+/* At full the sheet is the page, and its top is 60 px down: the note (88 to 134) lay across the
+   sheet's handle and the "Explore" back row, leaving 27 and 31 px of each under a finger
+   (internal #457, measured 2026-10-08 at 390 x 844). The note is about the scene, which the sheet
+   now covers, so it waits with the pill and the live line; one drag down brings it back. */
+html.sr-phone[data-sheet='full'] .sr-scenenote {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* The glass-strong surfaces answer the solid fallback themselves (.sr-float's would be lighter). */

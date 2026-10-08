@@ -558,7 +558,7 @@ export function createSystems(scene, ctx = {}) {
       const r = (MERCURY_A_AU * AU_KM) / stage.unitKm;
       label.position.set(-(a * u.x + b * v.x) / l * r, -(a * u.y + b * v.y) / l * r, -(a * u.z + b * v.z) / l * r);
     }
-    if (current.extra) extras.update(current, cam, _p);
+    if (current.extra) extras.update(current, cam, _p, overlay);
     for (const { planet, mesh } of current.planets) {
       if (!drawnPositionOf(planet.id, _v)) { mesh.visible = false; continue; }
       mesh.visible = true;
@@ -712,6 +712,29 @@ export function createSystems(scene, ctx = {}) {
     return drawnPositionOf(current.system.hostId, out);
   }
 
+  /**
+   * What is laid over a generated system's view on demand (internal #280): `zone`, the computed
+   * habitable-zone band, and `orbits`, our own planets' orbits for scale. Both off until asked for,
+   * and kept for the session, so a visitor comparing systems does not press twice. `available`
+   * says which of the two a system (the one on screen, or the one named) can show.
+   */
+  const overlay = { zone: false, orbits: false };
+  function setOverlay(part, on) {
+    if (part !== 'zone' && part !== 'orbits') return false;
+    overlay[part] = !!on;
+    if (ctx.requestRender) ctx.requestRender();
+    return overlay[part];
+  }
+  function overlayState(system = current ? current.system : null) {
+    // From the row, not from what happens to be built: a card is painted while its system loads.
+    const generated = !!(extras && system && system.zone !== undefined);
+    return {
+      zone: overlay.zone,
+      orbits: overlay.orbits,
+      available: { zone: generated && !!system.zone, orbits: generated && extras.scaleOrbits(system).length > 0 },
+    };
+  }
+
   function stats() {
     let triangles = 0;
     let meshes = 0;
@@ -737,6 +760,8 @@ export function createSystems(scene, ctx = {}) {
     get active() { return isActive(); },
     setVisible,
     setScaleRing,
+    setOverlay,
+    overlay: overlayState,
     records,
     drawnPositionOf,
     pickAll,
