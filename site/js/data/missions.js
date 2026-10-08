@@ -743,6 +743,210 @@ export const MISSIONS = [
     ]
   },
   {
+    "id": "saturn-v",
+    "record": "saturn-v-lc-39a",
+    "display": "Saturn V",
+    "read": "2026-10-08",
+    "source": {
+      "name": "NASA NSSDCA, Apollo 11 Command and Service Module",
+      "url": "https://nssdc.gsfc.nasa.gov/nmc/spacecraft/display.action?id=1969-059A"
+    },
+    "events": [
+      {
+        "id": "apollo-8",
+        "date": "1968-12-21T12:51:00Z",
+        "title": "Apollo 8 leaves for the Moon",
+        "text": "The first Saturn V to carry people sends Borman, Lovell and Anders to orbit the Moon.",
+        "place": "site",
+        "source": {
+          "name": "NASA NSSDCA, Apollo 8",
+          "url": "https://nssdc.gsfc.nasa.gov/nmc/spacecraft/display.action?id=1968-118A"
+        }
+      },
+      {
+        "id": "apollo-11",
+        "date": "1969-07-16T13:32:00Z",
+        "title": "Apollo 11 leaves for the Moon",
+        "text": "Armstrong, Aldrin and Collins lift off from pad 39A. Four days later two of them land.",
+        "place": "site"
+      },
+      {
+        "id": "apollo-17",
+        "date": "1972-12-07T05:33:00Z",
+        "title": "Apollo 17, at night",
+        "text": "The last crew to the Moon leaves after a delay of 2 hours 40 minutes: the first night launch of an Apollo.",
+        "place": "site",
+        "source": {
+          "name": "NASA NSSDCA, Apollo 17 Command and Service Module",
+          "url": "https://nssdc.gsfc.nasa.gov/nmc/spacecraft/display.action?id=1972-096A"
+        }
+      }
+    ]
+  },
+  {
+    "id": "space-shuttle",
+    "record": "shuttle-lc-39b",
+    "display": "Space Shuttle",
+    "read": "2026-10-08",
+    "source": {
+      "name": "NASA NSSDCA, STS 31",
+      "url": "https://nssdc.gsfc.nasa.gov/nmc/spacecraft/display.action?id=1990-037A"
+    },
+    "events": [
+      {
+        "id": "sts-26",
+        "date": "1988-09-29",
+        "precision": "day",
+        "title": "Flying again",
+        "text": "Discovery launches on STS-26, the first Shuttle flight after the loss of Challenger.",
+        "place": "site",
+        "source": {
+          "name": "NASA NSSDCA, STS 26",
+          "url": "https://nssdc.gsfc.nasa.gov/nmc/spacecraft/display.action?id=1988-091A"
+        }
+      },
+      {
+        "id": "sts-31",
+        "date": "1990-04-24",
+        "precision": "day",
+        "title": "Hubble goes up",
+        "text": "Discovery launches on STS-31 with the Hubble Space Telescope in its payload bay.",
+        "place": "site"
+      },
+      {
+        "id": "sts-116",
+        "date": "2006-12-10",
+        "precision": "day",
+        "title": "The last Shuttle from 39B",
+        "text": "Discovery launches at night on STS-116, the last Space Shuttle to leave from this pad.",
+        "place": "site",
+        "source": {
+          "name": "NASA NSSDCA, STS 116",
+          "url": "https://nssdc.gsfc.nasa.gov/nmc/spacecraft/display.action?id=2006-055A"
+        }
+      }
+    ]
+  },
+  {
+    "id": "near-shoemaker",
+    "record": "deep-near",
+    "display": "NEAR Shoemaker",
+    "read": "2026-10-08",
+    "source": {
+      "name": "NASA NSSDCA, NEAR Shoemaker",
+      "url": "https://nssdc.gsfc.nasa.gov/nmc/spacecraft/display.action?id=1996-008A"
+    },
+    "events": [
+      {
+        "id": "launch",
+        "date": "1996-02-17",
+        "precision": "day",
+        "title": "Launch",
+        "text": "NEAR leaves Earth for the asteroid Eros.",
+        "place": "none",
+        "world": "earth"
+      },
+      {
+        "id": "eros-orbit",
+        "date": "2000-02-14",
+        "precision": "day",
+        "title": "Into orbit round Eros",
+        "text": "NEAR goes into orbit round the asteroid Eros.",
+        "place": "path"
+      },
+      {
+        "id": "touchdown",
+        "date": "2001-02-12",
+        "precision": "day",
+        "title": "Down on Eros",
+        "text": "At the end of its mission it is set down on the surface of Eros, and goes on sending for two weeks.",
+        "place": "path"
+      }
+    ]
+  },
+  {
+    "id": "stardust",
+    "record": "deep-stardust",
+    "display": "Stardust",
+    "read": "2026-10-08",
+    "source": {
+      "name": "NASA NSSDCA, Stardust",
+      "url": "https://nssdc.gsfc.nasa.gov/nmc/spacecraft/display.action?id=1999-003A"
+    },
+    "events": [
+      {
+        "id": "launch",
+        "date": "1999-02-07",
+        "precision": "day",
+        "title": "Launch",
+        "text": "Stardust leaves Earth for comet Wild 2.",
+        "place": "path",
+        "path_at": "1999-02-07T21:32:00Z"
+      },
+      {
+        "id": "wild-2",
+        "date": "2004-01-02",
+        "precision": "day",
+        "title": "Through the coma of Wild 2",
+        "text": "It makes its closest pass of comet Wild 2.",
+        "place": "path"
+      },
+      {
+        "id": "capsule",
+        "date": "2006-01-15",
+        "precision": "day",
+        "title": "The capsule lands",
+        "text": "The sample capsule comes down on Earth while the spacecraft flies on.",
+        "place": "path"
+      },
+      {
+        "id": "tempel-1",
+        "date": "2011-02-15",
+        "precision": "day",
+        "title": "Past Tempel 1",
+        "text": "On a second mission it passes comet Tempel 1, the comet Deep Impact struck.",
+        "place": "path"
+      }
+    ]
+  },
+  {
+    "id": "deep-impact",
+    "record": "deep-deep-impact",
+    "display": "Deep Impact",
+    "read": "2026-10-08",
+    "source": {
+      "name": "NASA NSSDCA, Deep Impact",
+      "url": "https://nssdc.gsfc.nasa.gov/nmc/spacecraft/display.action?id=2005-001A"
+    },
+    "events": [
+      {
+        "id": "launch",
+        "date": "2005-01-12",
+        "precision": "day",
+        "title": "Launch",
+        "text": "Deep Impact leaves Earth carrying an impactor for comet Tempel 1.",
+        "place": "path",
+        "path_at": "2005-01-12T19:23:00Z"
+      },
+      {
+        "id": "impact",
+        "date": "2005-07-04",
+        "precision": "day",
+        "title": "The impact",
+        "text": "Its impactor strikes comet Tempel 1 while the spacecraft watches from a distance.",
+        "place": "path"
+      },
+      {
+        "id": "hartley-2",
+        "date": "2010-11-04",
+        "precision": "day",
+        "title": "Past Hartley 2",
+        "text": "On an extended mission it flies past a second comet, Hartley 2.",
+        "place": "path"
+      }
+    ]
+  },
+  {
     "id": "perseverance",
     "record": "jezero",
     "path_record": "deep-mars-2020",

@@ -182,7 +182,7 @@ TIME_RELATIVE = (
 )
 
 # --- registry/sites.yaml -------------------------------------------------------------------
-SITE_CLASSES = {"dish", "surface"}
+SITE_CLASSES = {"dish", "surface", "pad"}
 # What a landing site is drawn as. Adding one is three edits and deliberately so: this set,
 # BUILDERS.site in site/js/scene/models.js, and bySiteClass in site/js/scene/realmodels.js (or a
 # `bySite` entry, for a model of the vehicle itself, which is what `lunar-module` is).
@@ -4553,6 +4553,17 @@ def main() -> int:
         if taper == "hammerhead" and not isinstance(top.get("dia_m"), (int, float)):
             fail(where, "`taper: hammerhead` claims the fairing is WIDER than the body, so it "
                         "needs `top.dia_m` to say by how much")
+
+        # 8b. where the first stage ends, and what a booster that flies back carries (public #427)
+        dimension(where, r, "stage1_len_m", "stage1_len_m", len_ceiling)
+        rec = r.get("recovery")
+        if rec is not None:
+            if not isinstance(rec, dict) or not rec or set(rec) - {"legs", "grid_fins"}:
+                fail(where, f"recovery {rec!r} must be a map of `legs` and/or `grid_fins`")
+            else:
+                for key, n in rec.items():
+                    if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= 8:
+                        fail(where, f"recovery.{key} is {n!r}; a count from 1 to 8")
 
         # 9. engines
         eng = r.get("engines")
