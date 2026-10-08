@@ -2576,6 +2576,15 @@ html[data-trip-phase] .sr-tripsheet.is-floating {
   padding-bottom: var(--sp-3);
 }
 
+/* THE WAY HOME (`return: true`, internal #304): in present mode the last stop's caption is put
+   down for the one flight back, and the end card comes up at home. The panel's card stays, as it
+   does over any flight (an empty panel for twenty seconds was worse, seen 2026-10-08). */
+html[data-trip-returning] .sr-tripsheet.is-present {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--sr-slow) var(--sr-ease);
+}
+
 html[data-trip-phase='intro'] .sr-tripsheet.is-floating,
 html[data-trip-phase='outro'] .sr-tripsheet.is-floating {
   bottom: 0;
@@ -3882,6 +3891,11 @@ html:not(.sr-phone) .sr-explore.is-searching .sr-explore__body {
 
 .sr-more:hover { color: var(--sr-ember); }
 .sr-more[hidden] { display: none; }
+
+/* JUST WATCH: the reels, under "Play on its own" (ui/explore.js, internal #448). A list like any other. */
+.sr-reels { margin-top: var(--sp-2); }
+.sr-reels[hidden] { display: none; }
+.sr-more + .sr-more { margin-left: var(--sp-4); }
 
 /* A list of rows: a name, a mono value, hairlines between (the Planets and Stars tabs, Tonight). */
 .sr-list {

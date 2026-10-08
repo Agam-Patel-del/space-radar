@@ -169,6 +169,36 @@ const SOUTH = { name: 'Southville', latDeg: -33.9, lonDeg: 18.4, altKm: 0, sourc
   }
   // The stand-ins at a placeholder perihelion share these ids; the layer must prefer the real rows.
   const src = readFileSync(join(JS, 'data/layers.js'), 'utf8');
+  // What the Moon does on a shower's night (internal #413), from the Moon's own phases that year.
+  {
+    const { showerMoon } = await import(join(JS, 'sky/lookfor.js'));
+    const Astronomy = await import(join(ROOT, 'site/vendor/astronomy.js'));
+    const from = new Date(Date.UTC(2026, 10, 1));
+    const newMoon = Astronomy.SearchMoonPhase(0, from, 40).date.getTime();
+    const full = Astronomy.SearchMoonPhase(180, from, 40).date.getTime();
+    const quarter = Astronomy.SearchMoonPhase(90, from, 40).date.getTime();
+    const a = showerMoon(newMoon), b = showerMoon(full), c = showerMoon(quarter);
+    check(a && a.kind === 'dark' && a.percent <= 1, `at new Moon a shower has a dark sky (${JSON.stringify(a)})`);
+    check(b && b.kind === 'bright' && b.percent >= 99, `at full Moon it is washed out (${JSON.stringify(b)})`);
+    check(c && c.kind === 'some' && Math.abs(c.percent - 50) <= 2, `at first quarter it is half lit (${JSON.stringify(c)})`);
+    check(showerMoon(NaN) === null, 'no night, no Moon line');
+    const { COPY } = await import(join(JS, 'copy/en.js'));
+    check(['dark', 'some', 'bright'].every((k) => /\{pct\}% lit that night/.test(COPY.trip.lookShowerMoon[k])), 'each of the three sentences gives the lit share');
+    check(/showerMoon\(found\.peakMs\)/.test(readFileSync(join(JS, 'ui/trip.js'), 'utf8')), 'and the shower stop\'s line asks for it at the peak');
+  }
+  // The named rows outlive the select and the budget (internal #444: Halley, ranked last of 200).
+  {
+    const { withinBudget } = await import(join(JS, 'data/layers.js'));
+    const rank = (a, b) => a.mag - b.mag;
+    const crowd = Array.from({ length: 200 }, (_, i) => ({ id: `comet-${i}`, mag: i / 10 }));
+    const halley = { id: 'comet-1P', mag: 28.6 };
+    const cut = withinBudget(crowd.concat([halley]), [halley], { maxItems: 60, rank });
+    check(cut.length === 60 && cut.includes(halley), `sixty comets of two hundred and one, and Halley among them (${cut.length}, ${cut.includes(halley)})`);
+    check(cut.filter((r) => r !== halley).every((r) => r.mag < 5.9), 'the other fifty-nine are the brightest');
+    check(withinBudget(crowd.slice(0, 5), [halley], { maxItems: 60, rank }).includes(halley), 'a row the select dropped is put back');
+    check(withinBudget(crowd, [], { maxItems: 60, rank }).length === 60 && withinBudget(crowd, null, null).length === 200, 'a layer with no rows of its own is cut as before, and one with no budget not at all');
+    check(/selected = withinBudget\(selected, own, layer\.budget\)/.test(src), 'and the loader uses it');
+  }
   check(/always: namedAsteroids/.test(src) && /always: namedComets/.test(src) && /parsed\.filter\(\(r\) => !ids\.has\(r\.id\)/.test(src), 'the asteroids and comets layers always carry their named rows, in place of a stand-in of the same id');
   check(sampleAsteroids().some((r) => r.id === 'asteroid-99942' && r.cls === 'sample'), 'the stand-in Apophis still exists, and is still classed sample');
   for (const id of EIGHT) {

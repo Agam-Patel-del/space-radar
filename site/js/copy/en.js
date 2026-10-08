@@ -646,7 +646,10 @@ export const COPY = {
     fewer: 'Fewer trips',
     // Under the cards: the trips one after another, hands off (ui/autopilot.js, spec 0036).
     onItsOwn: 'Play on its own',
-    onItsOwnTitle: 'The trips play one after another until you take the controls',
+    onItsOwnTitle: 'Trips one after another until you take the controls',
+    // The reels the button opens (registry/autopilot.yaml), each with one lap's length.
+    justWatch: 'Just watch',
+    reelLength: '{m} min a lap',
   },
   // The Planets and Stars tabs' lists.
   explore: {
@@ -1745,6 +1748,12 @@ export const COPY = {
     lookShowerUp: 'Its radiant is {alt} in the {az} at this hour.',
     lookShowerDown: 'Its radiant is below your horizon at this hour; the view faces where it will rise.',
     lookShowerRate: 'At the peak, from a dark place with the radiant high: about {rate} meteors an hour.',
+    // The Moon on the night of the peak (sky/lookfor.js showerMoon): its lit share, and what that does.
+    lookShowerMoon: {
+      dark: 'The Moon is {pct}% lit that night, so the sky stays dark.',
+      some: 'The Moon is {pct}% lit that night and will hide some of the faint ones.',
+      bright: 'The Moon is {pct}% lit that night and will hide all but the bright ones.',
+    },
     // `live_note: close-approach` and `live_note: satellites`: counted from the records on screen.
     approachNext: 'Next in NASA JPL\u2019s table: {name}, on {date}, at {ld} times the Moon\u2019s distance.',
     approachNextFar: 'Next in NASA JPL\u2019s table: {name}, on {date}.',
