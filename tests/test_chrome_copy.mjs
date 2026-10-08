@@ -175,9 +175,6 @@ const LONG_OK = new Map([
   ['audio.panelNote', 'the one note under Sound in What to show: two lines, read once'],
   ['audio.narrationCredit', 'a credit: the model, the voice and the licence are all owed'],
   ['controls.locationInsecure', 'a disabled button\'s tooltip: why, and what to do instead'],
-  ['controls.locationGuessed', 'the place row\'s note: how the guess was made is the honest part'],
-  ['controls.locationGuessedByOffset', 'the same, for the rougher guess'],
-  ['controls.tonightNoObserver', 'an empty state in the place panel: two lines'],
   ['search.loadsWhenOn', 'a tooltip listing layers'],
   ['search.notLoadedCount', 'a tooltip\'s second sentence'],
   ['tonight.passLine', 'a pass read out in full for a screen reader; the row draws its parts'],
@@ -188,7 +185,7 @@ const LONG_OK = new Map([
 ]);
 // An event's full sentence (ui/next.js): the row draws COPY.nextList.row.*, held above to a width;
 // these are the row's tooltip and the event's card, where a sentence is the point.
-const EVENT_SENTENCE = /^nextList\.(launchRough|approach|perihelion|train|shower|showerMoon|showerNoMoon|radiantLow|radiantNeverUp|solarEclipse|solarEclipseGrazing|lunarEclipse|lunarEclipsePenumbral|eclipseLocal|eclipseBelowHorizon|classOf\.\w+)$/;
+const EVENT_SENTENCE = /^nextList\.(launchRough|approach|perihelion|train|shower|showerMoon|showerNoMoon|radiantLow|radiantNeverUp|solarEclipse|solarEclipseGrazing|lunarEclipse|lunarEclipsePenumbral|seasons\.\w+|eclipseLocal|eclipseBelowHorizon|classOf\.\w+)$/;
 // Where the longest value of a placeholder is not the table's: a storm count is two digits and a
 // storm's name one word.
 const WORST_FOR = { 'rightNow.storms': { n: '12', name: 'Humberto' } };

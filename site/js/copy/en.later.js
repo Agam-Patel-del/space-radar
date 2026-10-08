@@ -457,6 +457,10 @@ Object.assign(COPY, {
   // globe, with its legend, the day it is of and whose data it is.
   overlay: {
     panelTitle: 'Earth data',
+    // ui/overlaykey.js: the key in the sidebar while a map is over the globe.
+    keyTitle: 'On the globe now',
+    keyOff: 'Take it off',
+    keyOffTitle: 'Show the Earth as it is',
     none: 'None',
     loading: 'Asking NASA for the picture.',
     failed: 'That picture did not arrive. The globe is as it was.',
@@ -688,6 +692,9 @@ Object.assign(COPY, {
     lensTitle: 'Field of view, {n} degrees. Narrow is a long lens; wide takes in more',
     png: 'PNG',
     pngTitle: 'Save without loss, as a larger file',
+    share: 'Share',
+    shareTitle: 'Hand the picture to this device’s share sheet',
+    sharedSaved: 'This device would not share it. Picture saved instead',
     done: 'Leave photo mode',
     making: 'Making the picture',
     saved: 'Picture saved',
@@ -1343,6 +1350,9 @@ Object.assign(COPY, {
     title: 'Opens {publisher}’s own page in a new tab',
   },
   placeKeep: {
+    group: 'Where you are',
+    change: 'Change place',
+    changeTitle: 'A city, or where the browser says you are',
     remember: 'Remember this place',
     rememberTitle: 'Keeps it in this browser only, to the nearest 0.1°',
     forget: 'Forget this place',
@@ -1352,7 +1362,5 @@ Object.assign(COPY, {
     shareTitle: 'Copies a link that carries this place to the nearest 0.1°',
     copied: 'Link copied. It carries this place to 0.1°.',
     copyFailed: 'The link could not be copied.',
-    shared: 'A place shared with you: {name}',
-    sharedCoords: '{lat}°, {lon}°',
   },
 });

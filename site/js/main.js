@@ -15,7 +15,7 @@ import { parseFrame } from './propagate/frames.js';
 import { createWorlds, WORLDS, positionOf } from './scene/worlds.js';
 import { createStarfield } from './scene/starfield.js';
 import { createGlyphLayer } from './scene/glyphs.js';
-import { createHeroes, closeUpDistance, SELECTED_PX, warmModels } from './scene/heroes.js';
+import { createHeroes, closeUpDistance, SELECTED_PX, MODEL_SPAN, warmModels } from './scene/heroes.js';
 import { limbFraming, fitDistance, discDistance, litOffset, groundDistanceKm, nightGroundPose, openingPlan, OPENING_KEY } from './scene/framing.js';
 import { createCameraRig, worldFramingDistance } from './scene/camera.js';
 import { createViewShift, MAX_SHIFT_FRACTION, PILL_GAP_PX } from './scene/viewshift.js';
@@ -463,7 +463,13 @@ export async function boot({ setStatus } = {}) {
   let overlayImport = null;
   let overlayAsked = null; // the id on the globe now, or wanted on it
   let overlayOwn = null; // the visitor's own choice, which a trip suspends and leaving puts back
-  const tellOverlay = () => window.dispatchEvent(new CustomEvent('sr:overlay'));
+  // The key in the sidebar's Earth tab (ui/overlaykey.js, internal #386): fetched the first time a
+  // map is asked for, so a visit that never lays one on never pays for it.
+  let overlayKey = null;
+  const wantOverlayKey = () => overlayKey || (overlayKey = import('./ui/overlaykey.js')
+    .then((m) => m.mountOverlayKey(ctx))
+    .catch((e) => { console.warn('the overlay key did not load', e); overlayKey = null; return null; }));
+  const tellOverlay = () => { if (overlayAsked) wantOverlayKey(); window.dispatchEvent(new CustomEvent('sr:overlay')); };
   const wantOverlay = () => overlayImport || (overlayImport = import('./scene/earthoverlay.js')
     .then((m) => {
       ctx.earthOverlay = m.createEarthOverlay({
@@ -1494,7 +1500,6 @@ export async function boot({ setStatus } = {}) {
    * on a phone the card opens at half (docs/ui-guide.md §3.11, 48 % of the height), so that much is
    * taken as covered whatever the box says this frame.
    */
-  const MODEL_SPAN = 1.32;
   // The time pill too (internal #421): 560 px of a desktop's width is no bar by the 80 % rule, and
   // it is 102 px tall under the middle of the scene, where every world's lower limb was. And the
   // phone trip's own top bar.
@@ -2118,7 +2123,7 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
 
     // What the frame cost and what the device has already admitted about itself: scene/heroes.js
     // spends a fast machine's headroom on more models and gives it back when the frames say so.
-    if (heroes) heroes.update(t, { frameMs, latched: latch.latched, saveData });
+    if (heroes) heroes.update(t, { frameMs, latched: latch.latched, saveData, bandPx: ctx.viewShift ? ctx.viewShift.bandHeightPx() : 0 });
     if (starfield && starfield.update) starfield.update(ctx.camera);
     if (ctx.stars3d) ctx.stars3d.update(ctx.camera, ctx.renderer);
     // A sky stop's lens (ui/trip.js `zoom`): eased, so a wider figure opens out and never jumps.
@@ -2242,6 +2247,9 @@ async function loadAllLayers(ctx, layerRecords, glyphLayers, scene) {
     (srcs.length === 0 || snaps.every(Boolean) ? local : upstream).push(layer);
   }
 
+  // Has this layer finished trying (rows or a failure)? A module loaded AFTER the layers landed
+  // (ui/trip.js is) missed their `sr:layer` and asks here instead of waiting for it (internal #454).
+  ctx.layerLanded = (id) => layerRecords.has(id);
   ctx.loadLayerNow = (layer) => { if (layer && layer.deferred) { layer.deferred = false; return one(layer); } return Promise.resolve(); };
   let laterLoad = null;
   ctx.laterLayersLoaded = () => later.length === 0 || (laterLoad !== null && later.every((l) => layerRecords.has(l.id)));

@@ -706,6 +706,10 @@ export const COPY = {
     noEventOn: 'No later event on the timeline.',
     // A mark for one of the Moon's four named phases (ui/scrubber.js moonMarks).
     moonMark: 'The Moon is {phase}, {date}',
+    // Sunrise and sunset at the visitor's place (ui/scrubber.js sunMarks); a guessed place says so.
+    sunMark: '{what} where you are, {date}',
+    sunMarkGuess: '{what} at the place guessed for you, {date}',
+    sunWords: { sunrise: 'Sunrise', sunset: 'Sunset' },
     unitTitle: 'Steps of {unit}. Press for {next}',
     // The timeline (ui/scrubber.js). It is a slider: its value is the readout's words.
     tapeLabel: 'Timeline. Drag it, or use the arrow keys',
@@ -990,6 +994,17 @@ export const COPY = {
     solarEclipseGrazing: '{kind} solar eclipse on {date}, seen only from far north or far south',
     lunarEclipse: '{kind} lunar eclipse on {date}, the Moon in the Earth’s shadow for everyone who can see it',
     lunarEclipsePenumbral: '{kind} lunar eclipse on {date}: the Moon only dims a little, in the Earth’s outer shadow',
+    // The turns of the year (data/events.js seasons, internal #384): the instant is the same for
+    // everybody; which day is long depends on the hemisphere, so the row says both.
+    seasonTitles: { march: 'March equinox', june: 'June solstice', september: 'September equinox', december: 'December solstice' },
+    seasons: {
+      march: 'March equinox on {date}: day and night are near equal everywhere',
+      june: 'June solstice on {date}: the north’s longest day, the south’s shortest',
+      september: 'September equinox on {date}: day and night are near equal everywhere',
+      december: 'December solstice on {date}: the south’s longest day, the north’s shortest',
+    },
+    solstice: '{title} on {date}',
+    equinox: '{title} on {date}',
     eclipseNear: 'near {city}',
     eclipseFrom: 'about {km} km from {city}',
     // With a place set (spec 0031 req 6). Times are the visitor's own clock, as every row's are.
@@ -1009,6 +1024,7 @@ export const COPY = {
       pass: 'Worked out here from orbital elements measured {age}',
       passNoAge: 'Worked out here from orbital elements',
       eclipse: 'Worked out here to the minute from the motion of the Sun and Moon',
+      season: 'Worked out here to the minute from where the Sun stands',
     },
     // THE ROW AS DRAWN (spec 0061 task 5, ui/next.js rowParts): a title, then one line. The
     // sentences above are the row's tooltip and its accessible name; these are what fits a 320 px
@@ -2035,7 +2051,6 @@ export const COPY = {
     // While "Colour by" is not "What it is", the dots are the key's colours, not the layers'.
     keyedNote: 'Dots coloured by {key}: the key is below.',
     localTimeFallback: 'local',
-    locationTitle: 'Where you are',
     locationPlaceholder: 'Type a city',
     locationSearchLabel: 'Find a city',
     locationUseMine: 'Use my location',
@@ -2047,22 +2062,9 @@ export const COPY = {
     locationDenied: 'The browser said no. Pick a city instead.',
     locationFailed: 'The browser could not find you. Pick a city instead.',
     locationAsking: 'Asking the browser',
-    locationNone: 'Not set',
-    locationSet: '{name}',
     locationClear: 'Clear',
-    locationCoords: '{lat}, {lon}',
     locationNoMatch: 'No city in the bundled list matches that.',
-    // The Now moment's first screen guesses a place from the clock and says so, in words that a
-    // person reads, not in a tooltip: a guess about where you are is held to the same rule as a
-    // guess about an orbit.
-    locationGuessed: 'We guessed {name} from your clock’s time zone. Set where you are if that is wrong.',
-    locationGuessedByOffset: 'We guessed {name} from your clock’s offset from UTC, which is rough. Set where you are.',
-    tonightTitle: 'Coming over tonight',
-    tonightRow: '{name} at {time}, {dir}, {fists}',
-    tonightNone: 'Nothing bright comes over in the next twelve hours.',
-    tonightNoObserver: 'Set where you are, or open the Now door, and this will list what comes over.',
     tonightCouldNotLook: 'Could not look: no satellites have loaded.',
-    tonightShowerTail: 'The sky view marks its radiant.',
   },
 
   // ui/search.js. The footer strings are the honest ones: a layer nobody has read has no size,
@@ -2140,6 +2142,7 @@ export const COPY = {
     viaSnapshotLine: 'from our snapshot, fetched {age}',
     viaLiveLine: 'read live from {publisher} {age}',
     snapshotOverdue: 'a fresher copy is overdue',
+    snapshotChecking: '(checking for a newer one)',
     couldNotLookLine: 'could not look: {reason}',
     reasonNoRoute: '{why}, and a browser cannot read {publisher} directly',
     // Why our snapshot was not the source, keyed by the code data/sources.js reports.
@@ -2249,11 +2252,16 @@ export const COPY = {
   clean: {
     hide: 'Hide all panels (H)',
     show: 'Show the panels again (H or Escape)',
+    // Said once a visit, the first time the panels go (ui/cleanview.js).
+    hint: 'H or Escape for the panels. Shift+H keeps labels and time',
   },
   mark: {
     label: 'Source on GitHub',
     title: 'Space Radar source code on GitHub',
     href: 'https://github.com/Sara-Managed-Projects/space-radar',
+    press: 'Press kit',
+    pressTitle: 'What it is, pictures and the mark to use',
+    pressHref: 'press/index.html',
   },
 
 
