@@ -1425,7 +1425,8 @@ export const COPY = {
   },
 
   clouds: {
-    live: 'Clouds: seen {when}, {ago}, in infrared by {satellites}, through NASA GIBS. Over Europe, Africa, the Indian Ocean and the poles, which none of those satellites sees, they are illustrative.',
+    // 2026-10-08 (internal #241): the coldest tops are drawn as storm tops (scene/cloudcompose.js STORM_TOP).
+    live: 'Clouds: seen {when}, {ago}, in infrared by {satellites}, through NASA GIBS. The coldest tops, where thunderstorms are, are drawn higher and whiter than the rest. Over Europe, Africa, the Indian Ocean and the poles, which none of those satellites sees, they are illustrative.',
     at: 'at {time} UTC',
     between: 'between {from} and {to} UTC',
     // The picture's own DATE (public #330), said whenever the day on the clock, or today, is not the
@@ -1488,10 +1489,27 @@ export const COPY = {
     worlds: {
       jupiter: 'Weather: the bands slide past each other at the wind speeds measured from Hubble, and the Great Red Spot turns. Modelled motion: no cloud is drawn where it is today.',
       saturn: 'Weather: the bands move at the wind speeds Cassini measured. Modelled motion, not today’s clouds. The hexagon at the north pole is drawn at its measured place; its look is illustrative.',
+      // 2026-10-08 (internal #243): the dark Y, and the one honest sentence about lightning.
       venus: 'Weather: the cloud deck goes round in about four days, as Venus Express measured, sixty times faster than the ground. Modelled motion, not today’s clouds.',
+      // 2026-10-08 (internal #245): what Hubble's own maps show, said; nothing more is drawn.
       uranus: 'Weather: the air drifts round at the wind speeds measured from Keck and Gemini. Modelled motion, not today’s clouds.',
       neptune: 'Weather: the air streams round at the wind speeds Voyager 2 measured, the fastest on any planet. Modelled motion, not today’s clouds.',
-      mars: 'Weather: it is {season} on Mars. The frost caps and the dust haze are what that season typically brings: illustrative, not this week’s pictures.',
+      // 2026-10-08 (internal #242): {tau} is the season's typical dust optical depth (registry/weather.yaml dust_tau).
+      mars: 'Weather: it is {season} on Mars. The frost caps and the dust in its air, an optical depth near {tau}, are what that season typically brings: seasonal and illustrative, not today’s weather.',
+      // 2026-10-08 (internal #245).
+      titan: 'Weather: the pale streaks in the north stand for the methane clouds the Webb and Keck telescopes saw there in November 2022 and July 2023. Illustrative: where Titan’s clouds are today is not known.',
+    },
+    // A second sentence for a world's line (2026-10-08, internal #243 and #245): what else is drawn
+    // and how much of it is known, or what its real maps show and we do not draw.
+    also: {
+      venus: 'The dark Y going round with it is what ultraviolet cameras see; to the eye Venus is nearly plain, and its place here is illustrative. Lightning on Venus has been reported and is still debated; none is drawn.',
+      uranus: 'On “As Hubble saw it” the bright cap over the north pole is real: Hubble has watched it brighten year after year as the northern summer of 2028 comes.',
+      neptune: 'Its bright streaks are methane ice. Hubble saw them fade after 2019 and its last dark spot dissolve, so no spot is drawn.',
+    },
+    // Lightning on the giants (2026-10-08, internal #244), added to the world's line where it is drawn.
+    flashes: {
+      jupiter: 'On its night side, rare flashes stand for the lightning Juno found, most of it far in the north: the latitudes are measured, each flash is illustrative and drawn larger than life.',
+      saturn: 'On its night side, rare flashes at 36 degrees south stand for the lightning Cassini photographed there in 2009: illustrative and larger than life, and nothing is watching for it now.',
     },
     seasons: ['northern spring', 'northern summer', 'northern autumn', 'northern winter'],
   },
@@ -1632,6 +1650,9 @@ export const COPY = {
       portrait: 'while this card is open its picture is drawn at its place, far larger than it would look from here',
     },
     worldDeparture: {
+      // The Earth (2026-10-08, scene/earth.js EARTH_RELIEF, scene/atmosphere.js EARTH_AIR): {relief}
+      // is the relief's exaggeration, {air} the shell's height gain.
+      earth: 'on a larger screen its mountains are from NOAA\u2019s ETOPO 2022 heights, drawn {relief} times steeper than they are so that a low Sun shows them; the glow of the air round its edge is drawn {air} times taller than the air is',
       mercury: 'on a larger screen its relief is from MESSENGER\u2019s elevation model, drawn {steep} times steeper than measured so that crater rims catch the light',
       venus: 'the glow round its edge and past its day side stands for a deep haze; how thick it is drawn and how far it reaches are illustrative',
       saturn: 'its bands are drawn with {contrast} times the contrast its map has, an adjustment of ours; \u201cAs Hubble saw it\u201d is not adjusted',
@@ -1650,7 +1671,7 @@ export const COPY = {
     worldRingsDense: 'its rings are at their measured distances, drawn {w} times wider, {d} times more opaque and far brighter than they are so that they show: the real ones are faint threads as dark as charcoal',
     // The Sun close up (scene/sun.js, spec 0055 task 3): which parts of the picture are a model and
     // which are there to be seen.
-    worldSun: 'close up, its edge darkens and reddens as a model of its atmosphere says it should; the grain stands for its churning surface and is drawn far coarser than the real granules; the corona is illustrative, and drawn far brighter than it is so that it can be seen',
+    worldSun: 'close up, its edge darkens and reddens as a model of its atmosphere says it should; the grain stands for its churning surface and is drawn far coarser than the real granules; the corona is illustrative, and drawn far brighter than it is so that it can be seen; the stars beside it are faded, as its glare hides them from any camera',
     // Spec 0065 requirement 4 (internal #337): while a close world is drawn from map tiles, the card
     // names the mosaic under the camera. {title} is the registry row's (registry/tilesets.yaml), {res}
     // the metres one pixel of the finest tiles on screen covers. `Detail`: Mars, where the mosaic is
