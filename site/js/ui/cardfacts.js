@@ -25,6 +25,13 @@ import { gmst, eciToEcef, ecefToGeodetic, geodeticToEcef, parseFrame, bodyFixedT
 import { predictPasses } from '../sky/passes.js';
 import '../copy/en.later.js';
 
+// WHAT A GENERATED STAR SYSTEM ADDS TO A CARD (internal #466), handed in by ui/cards.js and not
+// imported here: this module also serves the light embed, which has no star systems, and
+// ui/systemcard.js reaches scene/systems.js. `{planet(record), star(record)}`, each null for a
+// record that is not a member of a generated system whose rows have landed.
+let systemRows = null;
+export function setSystemRows(source) { systemRows = source; }
+
 export const MAX_NAME = 72; // keeps the first sentence inside its limit whatever a feed sends
 export const PASS_WINDOW_HOURS = 24;
 export const DEG = 180 / Math.PI;
@@ -607,10 +614,15 @@ export function rightNowRows(record, m, passInfo) {
     rows.push([R.distanceFromSun, distLy !== null ? t(V.lightYears, { n: fmt.smart(distLy) }) : COPY.card.couldNotLook]);
     const host = pick(md, 'host');
     if (host) rows.push([R.hostStar, String(host) + (pick(md, 'starSpect') ? ` (${pick(md, 'starSpect')})` : '')]);
+    // A planet of a generated system whose rows have landed (internal #466): the row says which of
+    // its numbers are the Archive's estimates, and adds what this map computed, labelled as computed.
+    const facts = systemRows ? systemRows.planet(record) : null;
     const rade = pickNumber(md, 'radiusEarths');
-    if (rade !== null) rows.push([R.planetRadius, t(V.earths, { n: fmt.smart(rade) })]);
+    if (facts && facts.radius) rows.push([R.planetRadius, facts.radius]);
+    else if (rade !== null) rows.push([R.planetRadius, t(V.earths, { n: fmt.smart(rade) })]);
     const mass = pickNumber(md, 'massEarths');
-    if (mass !== null) rows.push([R.planetMass, t(V.earths, { n: fmt.smart(mass) })]);
+    if (facts && facts.mass) rows.push([R.planetMass, facts.mass]);
+    else if (mass !== null) rows.push([R.planetMass, t(V.earths, { n: fmt.smart(mass) })]);
     const period = pickNumber(md, 'periodDays');
     if (period !== null) rows.push([R.yearLength, period >= 2 ? t(V.days, { n: fmt.smart(period) }) : t(V.hours, { n: fmt.smart(period * 24) })]);
     const year = pickNumber(md, 'discYear');
@@ -618,6 +630,7 @@ export function rightNowRows(record, m, passInfo) {
     if (year !== null) rows.push([R.found, method ? t(V.yearByMethod, { year: String(Math.round(year)), method: String(method) }) : String(Math.round(year))]);
     const asOf = pick(md, 'asOf');
     if (asOf) rows.push([R.catalogueCopy, t(V.asOf, { date: String(asOf) })]);
+    if (facts) rows.push(...facts.rows);
   } else if (klassOf(record) === 'star') {
     // Light-years, not astronomical units: 268 000 au for Proxima is a number nobody can hold.
     const distLy = pickNumber(md, 'distLy');
@@ -637,6 +650,10 @@ export function rightNowRows(record, m, passInfo) {
     if (width !== null && width > 0) rows.push([R.starWidth, t(V.sunsWide, { n: fmt.smart(width) })]);
     const hip = pick(md, 'hip');
     if (hip) rows.push([R.catalogue, `HIP ${hip}`]);
+    // The host of a generated system (internal #466): the table's numbers for the star, and the
+    // habitable zone this map computed from them, labelled as computed.
+    const ofSystem = systemRows ? systemRows.star(record) : null;
+    if (ofSystem) rows.push(...ofSystem);
     // The line under the first sentence is registry/stars-notable.yaml's, not HYG's, so it says
     // where it was read -- with its own label, because "Read from" beside the distance would claim
     // the distance came from there too. The footer's source line stays HYG's.
