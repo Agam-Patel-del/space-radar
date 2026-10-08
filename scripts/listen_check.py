@@ -153,7 +153,10 @@ def _numbers(tokens: list) -> list:
         while i < n:
             tok = tokens[i]
             nxt = tokens[i + 1] if i + 1 < n else ""
-            if tok == "and" and started and last in ("hundred", "scale") \
+            # "five thousand and one hundred thousand" is two numbers: after a thousand, "and"
+            # joins only what is under a hundred.
+            after = tokens[i + 2] if i + 2 < n else ""
+            if tok == "and" and started and last in ("hundred", "scale") and not (last == "scale" and after == "hundred") \
                     and ((nxt in UNITS and nxt != "oh") or nxt in TENS or re.fullmatch(r"\d{1,2}", nxt)):
                 i += 1
                 continue
@@ -282,6 +285,8 @@ def canon(text: str) -> list:
     s = s.replace("'", "")
     s = re.sub(r"[^a-z0-9.]+", " ", s)
     s = re.sub(r"(?<!\d)\.|\.(?!\d)", " ", s)
+    # "20km", as a recogniser sometimes writes "twenty kilometres"
+    s = re.sub(r"(\d)(km|kg|cm|mm)\b", r"\1 \2", s)
     # "m87" is "m 87"; "22nd" stays
     s = re.sub(r"\b([a-z]+)(\d+)\b", r"\1 \2", s)
     tokens = [ABBREVIATED.get(t, t) for t in s.split()]
