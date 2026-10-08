@@ -15,6 +15,9 @@ import { predictPasses } from '../sky/passes.js';
 import { showerItems, rowText as nextRowText } from './next.js';
 import { SHOWERS } from '../data/showers.js';
 import { roundPlace } from '../sky/guessplace.js';
+import { placeValue, keepPlace, keptPlace, forgetPlace, browserStorage } from '../sky/placelink.js';
+import { appBase, toast } from './share.js';
+import '../copy/en.later.js';
 
 const DEG_TO_RAD = Math.PI / 180;
 const DEG = 180 / Math.PI;
@@ -57,6 +60,17 @@ export function observerFor(city) {
   };
 }
 
+/**
+ * The link "Share this place" copies: the app's address with `p` and nothing else; '' without a
+ * value. Built here and not by ui/share.js shareUrl, which has no place key at all: an ordinary
+ * share can never carry a place, even from a tab that was opened on somebody's place link.
+ */
+export function placeLink(value, base = appBase()) {
+  if (!value) return '';
+  const root = String(base).endsWith('/') ? String(base) : `${base}/`;
+  return `${root}#p=${encodeURIComponent(value)}`;
+}
+
 /** A city from the bundled list: exact, then prefix, then "name, country", then contains. Pure. */
 export function findCity(query, cities = CITIES) {
   const needle = String(query || '').trim().toLowerCase();
@@ -73,7 +87,7 @@ export function findCity(query, cities = CITIES) {
   return null;
 }
 
-export function createPlace(ctx) {
+export function createPlace(ctx, opts = {}) {
   const root = el('section', 'sr-place');
   root.appendChild(el('h2', 'sr-micro', COPY.controls.locationTitle));
 
@@ -100,8 +114,13 @@ export function createPlace(ctx) {
   const clearBtn = button('sr-chip sr-chip--quiet', COPY.controls.locationClear);
   row.append(input, datalist);
   root.appendChild(row);
+  // Remember this place, and share it (internal #137). Both act on the place in use, rounded to
+  // 0.1 degree by sky/placelink.js, and neither is offered for a place that was only guessed.
+  const K = COPY.placeKeep;
+  const keepBtn = button('sr-chip sr-chip--quiet', K.remember, K.rememberTitle);
+  const shareBtn = button('sr-chip sr-chip--quiet', K.share, K.shareTitle);
   const chips = el('div', 'sr-place__chips');
-  chips.append(useMine, clearBtn);
+  chips.append(useMine, clearBtn, keepBtn, shareBtn);
   root.appendChild(chips);
   const note = el('p', 'sr-place__note', '');
   note.hidden = true;
@@ -139,6 +158,27 @@ export function createPlace(ctx) {
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 },
     );
   });
+  const isKept = () => { const k = keptPlace(browserStorage()); const o = ctx && ctx.observer; return !!k && !!o && placeValue(k) === placeValue(o); };
+  const renderKeep = () => {
+    const value = placeValue(ctx && ctx.observer);
+    const kept = !!value && isKept();
+    keepBtn.hidden = !value;
+    shareBtn.hidden = !value;
+    keepBtn.textContent = kept ? K.forget : K.remember;
+    keepBtn.title = kept ? K.forgetTitle : K.rememberTitle;
+    keepBtn.setAttribute('aria-pressed', kept ? 'true' : 'false');
+  };
+  keepBtn.addEventListener('click', () => {
+    if (isKept()) { forgetPlace(browserStorage()); warn(''); }
+    else if (keepPlace(browserStorage(), ctx.observer)) { warn(K.kept); note.classList.remove('is-warning'); }
+    renderKeep();
+  });
+  shareBtn.addEventListener('click', () => {
+    const url = placeLink(placeValue(ctx && ctx.observer));
+    if (!url) return;
+    const done = (ok) => toast(ok ? K.copied : K.copyFailed, 3000);
+    try { navigator.clipboard.writeText(url).then(() => done(true), () => done(false)); } catch { done(false); }
+  });
   clearBtn.addEventListener('click', () => {
     input.value = '';
     try { if (ctx && typeof ctx.setObserver === 'function') ctx.setObserver(null); } catch { /* nothing else to try */ }
@@ -152,7 +192,8 @@ export function createPlace(ctx) {
   const list = el('ul', 'sr-list sr-tonight__list');
   const empty = el('p', 'sr-tonight__note', COPY.controls.tonightNoObserver);
   tonight.append(shower, list, empty);
-  root.appendChild(tonight);
+  // Under ui/tonight.js (opts.placeOnly) the passes are that view's: this list is not built or shown.
+  if (!opts.placeOnly) root.appendChild(tonight);
 
   const observerNow = () => (ctx && ctx.observer ? ctx.observer : null);
   const withRad = (o) => (Number.isFinite(o.latRad) ? o : { ...o, latRad: o.latDeg * DEG_TO_RAD, lonRad: o.lonDeg * DEG_TO_RAD });
@@ -165,6 +206,12 @@ export function createPlace(ctx) {
     const o = observerNow();
     if (!o) { current.textContent = COPY.controls.locationNone; current.classList.remove('is-guess', 'is-set'); return; }
     const name = o.name || t(COPY.controls.locationCoords, { lat: fmt.num(o.latDeg, 1), lon: fmt.num(o.lonDeg, 1) });
+    if (o.source === 'shared') {
+      current.textContent = t(K.shared, { name });
+      current.classList.remove('is-guess');
+      current.classList.add('is-set');
+      return;
+    }
     if (o.source === 'guess') {
       current.textContent = t(o.how === 'timezone' ? COPY.controls.locationGuessed : COPY.controls.locationGuessedByOffset, { name });
       current.classList.add('is-guess');
@@ -187,6 +234,7 @@ export function createPlace(ctx) {
   }
 
   function renderTonight() {
+    if (opts.placeOnly) return;
     while (list.firstChild) list.removeChild(list.firstChild);
     const o = observerNow();
     renderShower(o);
@@ -218,7 +266,7 @@ export function createPlace(ctx) {
     }
   }
 
-  const refresh = () => { renderCurrent(); renderTonight(); };
+  const refresh = () => { renderCurrent(); renderKeep(); renderTonight(); };
   window.addEventListener('sr:observer', refresh);
   window.addEventListener('sr:layer', (e) => {
     const id = e.detail && e.detail.id;

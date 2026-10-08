@@ -147,7 +147,7 @@ for (const f of files) {
   for (const m of src.matchAll(/createElementNS\(SVG_NS, 'svg'\)/g)) {
     const scope = scopeFrom(src, m.index);
     const line = src.slice(0, m.index).split('\n').length;
-    if (f === 'trajectory.js') continue; // a chart with role=img and its own title
+    if (f === 'trajectory.js' || f === 'cardextras.js') continue; // charts with role=img and a name of their own (the second: the distance curve)
     check(/aria-hidden/.test(scope), `site/js/ui/${f}:${line}: an svg without aria-hidden: the button carries the name, the drawing is not read out`);
     if (f !== 'hud.js') check(/0 0 24 24/.test(scope), `site/js/ui/${f}:${line}: an icon outside the 24 box`);
   }
