@@ -251,6 +251,38 @@ Object.assign(COPY, {
     label: 'Wonder of the day: {title}',
   },
 
+  // This week's story out of the catalogue (ui/story.js, public #450). Every {…} is computed from
+  // the element sets loaded; `rule` is the question that was asked of them, printed under the answer.
+  // "Our catalogue" is those sets and no more: Vanguard 1 is older than any active satellite, and
+  // a title that said "the oldest thing in orbit" of a list it is not in would be a typed claim.
+  story: {
+    kicker: 'This week’s story · week {week}',
+    label: 'This week’s story: {title}',
+    ruleTitle: 'How it was worked out: {rule}',
+    lowest: {
+      title: 'Lowest in our catalogue: {name}',
+      line: 'Never above {apogee} km, down to {perigee} km, a lap in {min} min.',
+      rule: 'Lowest highest point of {n} element sets under 7 days old',
+    },
+    farthest: {
+      title: 'Farthest out in our catalogue: {name}',
+      line: 'Out to {apogee} km, back to {perigee} km, one lap in {lap}.',
+      hours: '{n} hours',
+      days: '{n} days',
+      rule: 'Highest point of {n} element sets under 7 days old',
+    },
+    busiest: {
+      title: 'Busiest height we hold: {lo} to {hi} km',
+      line: '{n} of the {total} objects we hold fly there: {pct} in 100.',
+      rule: 'Fullest {band} km of mean height in {n} sets under 7 days old',
+    },
+    oldest: {
+      title: 'Oldest launch in our catalogue: {name}',
+      line: 'Launched in {year}, {years} years up, a lap in {min} min.',
+      rule: 'Earliest launch year of {n} element sets under 7 days old',
+    },
+  },
+
   // "Just happened" (internal #134): one row at the head of Coming up. {age} is ageInWords.
   happened: {
     flown: 'Lifted off {age}',
@@ -275,6 +307,17 @@ Object.assign(COPY, {
     placeTitle: 'Go to {name}',
     noPlaces: 'No places yet. Open one on the map.',
     noTrips: 'No trips finished yet.',
+    // Seen with your own eyes (public #395): a tick set on a card, the visitor's own word.
+    seenTitle: 'Seen with your own eyes',
+    noSeen: 'Nothing ticked yet. A card has a Seen it button.',
+    seenIt: 'Seen it',
+    seenOn: 'Seen {date}',
+    seenTitleOff: 'Tick when you have seen it with your own eyes',
+    seenTitleOn: 'Ticked as seen. Press to take the tick back',
+    seenNotKept: 'This browser keeps nothing, so the tick will not stay',
+    // The card's reminder for the thing's next dated event (data/ics.js): one calendar file.
+    remind: 'Remind me',
+    remindTitle: 'Downloads a calendar file with a reminder: {title}',
     forget: 'Forget me',
     forgetConfirm: 'Yes, forget',
     forgetTitle: 'Clears the passport and the sound choice from this browser',
@@ -293,7 +336,7 @@ Object.assign(COPY, {
   kept: {
     title: 'What this site keeps on your device',
     lines: [
-      'Your passport: the places you opened and the trips you finished.',
+      'Your passport: places opened, trips finished, things ticked as seen.',
       'Your sound and voice choice, and how you left the panels.',
       'A copy of the data it last read, so the map opens without a connection.',
     ],
@@ -1474,6 +1517,13 @@ Object.assign(COPY, {
     tripTitle: 'Starts the first trip on the list',
     look: 'Look around',
     lookTitle: 'Puts these lines away',
+  },
+  // ui/opening.js (public #287): over a first visit's opening shot. The buttons are welcome's.
+  opening: {
+    label: 'Opening',
+    from: 'From',
+    wait: 'Getting the trip ready',
+    skip: 'Any key or press skips this',
   },
   // ui/base.js (public #241): the house. `name` fills the undo toast, "Moved to base".
   base: {
