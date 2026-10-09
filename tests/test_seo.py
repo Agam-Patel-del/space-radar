@@ -118,8 +118,22 @@ with tempfile.TemporaryDirectory() as tmp:
     calls = log.read_text(encoding="utf-8").splitlines() if log.is_file() else []
     o_sync = [c for c in calls if c.startswith("s3 sync") and "s3://example-bucket/o" in c]
     ok(r.returncode == 0, "deploy.sh --app-only --dry-run runs against a fake aws")
-    ok(len(o_sync) == 1 and "text/html" in o_sync[0] and "--delete" in o_sync[0] and "no-cache" in o_sync[0],
-       f"the built o/ is synced as no-cache HTML with --delete ({o_sync})")
+    ok(len(o_sync) == 1 and "text/html" in o_sync[0] and "--delete" in o_sync[0] and "max-age=0, must-revalidate" in o_sync[0],
+       f"the built o/ is synced as HTML a browser revalidates on every load, with --delete ({o_sync})")
+    # Stored compressed or negotiated (internal #514): the code goes up as Brotli with a gzip copy
+    # under _gz/, and every page a crawler reads goes up as written.
+    def sync(prefix):
+        # The source maps go to js/ and vendor/ too, as JSON and as written (internal #515): not code.
+        return [c for c in calls if c.startswith("s3 sync") and f" s3://example-bucket/{prefix} " in c and "--include *.map" not in c]
+    maps = [c for c in calls if c.startswith("s3 sync") and "--include *.map" in c]
+    ok(len(maps) == 2 and all("application/json" in c and "--content-encoding" not in c and "--delete" in c for c in maps),
+       f"the source maps of js/ and vendor/ go up as JSON beside the code ({len(maps)})")
+    ok(all(sync(d) and all("--content-encoding br" in c for c in sync(d)) for d in ("css", "js", "vendor")),
+       "css/, js/ and vendor/ are stored as Brotli")
+    ok(all(sync(f"_gz/{d}") and all("--content-encoding gzip" in c for c in sync(f"_gz/{d}")) for d in ("css", "js", "vendor")),
+       "their gzip copies go under _gz/")
+    ok(all(sync(d) and not any("--content-encoding" in c for c in sync(d)) for d in ("o", "t", "press")),
+       "the pages a crawler reads (o/, t/, press/) are uploaded as written")
     ok("SEO ok" in r.stdout, "deploy.sh builds the pages and holds them to check_seo.py before it uploads")
     smap = (BUILT / "sitemap.xml").read_text(encoding="utf-8") if (BUILT / "sitemap.xml").is_file() else ""
     ok("/press/index.html</loc>" in smap, "the sitemap names the press page (internal #398)")

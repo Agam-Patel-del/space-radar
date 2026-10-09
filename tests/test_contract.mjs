@@ -123,7 +123,7 @@ const CONTRACT = {
   'scene/stars3d.js': ['createStars3d', 'STRETCH_PX'],
   // The device tiers (2026-09-28): the tier is chosen in quality.js, the maps swapped by
   // texturetiers.js from the mirror of registry/textures.yaml.
-  'scene/quality.js': ['createFrameLatch', 'shouldSaveData', 'chooseTier', 'createTierPromoter'],
+  'scene/quality.js': ['createFrameLatch', 'shouldSaveData', 'chooseTier', 'createTierPromoter', 'createIdleGate', 'idleCapWanted', 'movingReasons'],
   // Spec 0053 task 3: the aurora shell, its JS twins (tests/test_aurora.mjs), and the OVATION decode.
   'scene/aurora.js': ['createAurora', 'auroraRightNow', 'auroraLine', 'AURORA_FRAG', 'nightMask', 'probabilityToEmission', 'auroraColour', 'profile', 'profileIntegral', 'maxDotOnArc', 'gridUv', 'reachLatDeg', 'TIER_STEPS', 'EMISSIONS', 'NIGHT'],
   'data/ovation.js': ['OVATION_URL', 'parseOvation', 'upsampleGrid', 'summarize', 'auroraMode', 'nextLookMs', 'mayLook', 'REFRESH_MS', 'START_DELAY_MS', 'HOLD_MS'],
@@ -1366,8 +1366,10 @@ for (const file of allFiles) {
     }
   }
   // ... and the two must be written from different numbers on the CPU side too.
-  const dotLine = (src.match(/^\s*attrOpacity\.array\[k\] = .*$/m) || [''])[0];
-  const ringLine = (src.match(/^\s*attrRing\.array\[k\] = .*$/m) || [''])[0];
+  // (Since internal #519 a value is written only when it differs from the one in the array, so
+  // the two lines are a comparison and a write: tests/test_glyph_uploads.mjs holds the uploads.)
+  const dotLine = /^\s*if \(aOpacity\[k\] !== opacity\) \{ aOpacity\[k\] = opacity; /m.test(src) ? (src.match(/^\s*const opacity = .*$/m) || [''])[0] : '';
+  const ringLine = (src.match(/^\s*if \(aRing\[k\] !== own\) \{ aRing\[k\] = own; .*$/m) || [''])[0];
   if (!/dotOpacity\(/.test(dotLine)) problems.push(`HALO     the dot is not written through onemark's dotOpacity(): "${dotLine.trim()}"`);
   if (!ringLine) problems.push('HALO     nothing writes iRing, so the halo has no opacity of its own');
   else if (/dotOpacity\(|yieldTo|modelOpacity/.test(ringLine)) {

@@ -58,7 +58,7 @@ import { createOrbitLine } from './scene/orbitline.js';
 import { createGroundTrack } from './scene/groundtrack.js';
 import { createTrackLabels } from './ui/tracklabels.js';
 import { createOrbitRings, periodMsOfWorld, MARKER_PX } from './scene/orbitrings.js';
-import { createFrameLatch, shouldSaveData, chooseTier, createTierPromoter } from './scene/quality.js';
+import { createFrameLatch, shouldSaveData, chooseTier, createTierPromoter, createIdleGate, idleCapWanted, movingReasons } from './scene/quality.js';
 import { createLiveClouds } from './scene/liveclouds.js';
 import { createTextureTiers, gpuMiB, variantFor, LIVE_CLOUDS_MIB } from './scene/texturetiers.js';
 import { TEXTURES } from './data/textures.js';
@@ -2233,8 +2233,73 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
   ctx.eclipseOverride = null;
   ctx.eclipseDrawn = () => ctx.eclipseOverride !== false;
 
+  // THE IDLE FRAME RATE (internal #520; scene/quality.js has the whole rule). With nothing moving
+  // the loop draws twenty frames a second instead of every one. What "moving" means is ONE list,
+  // movingReasons(), filled at the end of each drawn frame below; what the loop cannot see coming
+  // (a hand on the page, a resize, a file that has just arrived) wakes it through these listeners.
+  const idle = createIdleGate({ enabled: idleCapWanted({ search: location.search, webdriver: navigator.webdriver === true, film: !!ctx.renderMode }) });
+  ctx.idle = idle;
+  {
+    const wake = () => idle.wake(performance.now());
+    for (const type of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'keyup', 'touchstart', 'touchmove', 'resize', 'hashchange', 'focus', 'sr:quality', 'sr:layers-ready', 'sr:opening-end']) {
+      window.addEventListener(type, wake, { passive: true, capture: true });
+    }
+    document.addEventListener('visibilitychange', wake);
+  }
+  // The camera as the last drawn frame left it, and what the GPU held then: both are compared, not
+  // announced, so a flight started from anywhere and a map landing from anywhere are both seen.
+  const seenCamera = new Float64Array(18);
+  let seenGpu = -1;
+  let wasCapped = false;
+  let freeFrameMs = 16;
+  function cameraMoved() {
+    const cam = ctx.camera;
+    const m = cam.matrixWorld.elements;
+    const p = cam.projectionMatrix.elements;
+    let moved = false;
+    for (let i = 0; i < 16; i++) if (seenCamera[i] !== m[i]) { seenCamera[i] = m[i]; moved = true; }
+    if (seenCamera[16] !== p[0]) { seenCamera[16] = p[0]; moved = true; }
+    if (seenCamera[17] !== p[5]) { seenCamera[17] = p[5]; moved = true; }
+    return moved;
+  }
+  // A layer that moves by itself, and is doing so NOW. Not "the layer is switched on": the aurora
+  // and the lightning are on for every first visit, and a rule that read the switch kept the loop
+  // at every frame for good (MEASURED in CI on 2026-10-09: the reason at rest was `layer`, always).
+  //   - the aurora moves while it is DRAWN with its folds (a live forecast, the layer on, the
+  //     Earth big enough on screen): with no forecast, or the Earth a dot, there is nothing to move;
+  //   - lightning moves while a map with strikes in it is held: a flash is a third of a second of
+  //     flicker and must have every frame. A phone and a data-saving connection hold none;
+  //   SO THE CAP IS RARE TODAY on a first visit that has a forecast: the oval's folds keep every
+  //   frame. Whether the folds may run at twenty frames a second at rest is a question for an eye,
+  //   not for this file (the internal issue beside #520); until it is answered they get all sixty.
+  //   - the wind and a data overlay, once asked for, are taken to be moving.
+  // (The pulsars' pulses are drawn on the ladder's stages only, which `stage` already answers.)
+  // Asked four times a second: the aurora's state() builds an object.
+  let layerMoving = true;
+  let layerAskedAt = -Infinity;
+  function layerAnimating(nowMs) {
+    if (nowMs - layerAskedAt < 250) return layerMoving;
+    layerAskedAt = nowMs;
+    const aurora = ctx.aurora && typeof ctx.aurora.state === 'function' ? ctx.aurora.state() : null;
+    const flashes = ctx.isLayerOn('lightning') && ctx.weather && typeof ctx.weather.perMinute === 'function' ? ctx.weather.perMinute() : 0;
+    layerMoving = !!(aurora && aurora.visible && aurora.folds) || flashes > 0 || !!ctx.wind || !!ctx.earthOverlay;
+    return layerMoving;
+  }
+  function gpuChanged() {
+    const info = ctx.renderer && ctx.renderer.info && ctx.renderer.info.memory;
+    const now = info ? info.textures * 100000 + info.geometries : 0;
+    const changed = now !== seenGpu;
+    seenGpu = now;
+    return changed;
+  }
+
   function frame(nowReal) {
     requestAnimationFrame(frame);
+    if (idle.skip(nowReal)) return;
+    // This frame's length is ours by choice while the cap is on (and on the frame that ends it):
+    // the latch and the tier promoter are fed the device's own frames only.
+    const capped = idle.capped(nowReal) || wasCapped;
+    wasCapped = idle.capped(nowReal);
     // Never negative. requestAnimationFrame stamps a frame with the time it BEGAN, which can be
     // earlier than the performance.now() `last` was set from -- and a negative first step was added
     // to the 10 Hz accumulator below, holding the glyph and label updates back until real time paid
@@ -2246,9 +2311,10 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     last = nowReal;
     // Not while filming: a film's frames are all one step long (33 ms at 30 fps), which the latch
     // would read as a slow device and answer by throwing the picture's quality away.
-    if (!document.hidden && !ctx.renderMode && latch.push(frameMs, nowReal)) degrade();
+    if (!capped) freeFrameMs = frameMs;
+    if (!document.hidden && !ctx.renderMode && !capped && latch.push(frameMs, nowReal)) degrade();
     if (ctx.quality && !document.hidden) {
-      ctx.quality.frame(frameMs, nowReal, latch.latched);
+      if (!capped) ctx.quality.frame(frameMs, nowReal, latch.latched);
       if (nowReal - lastTierTick >= 1000) { lastTierTick = nowReal; ctx.quality.tick(nowReal); }
     }
 
@@ -2345,7 +2411,7 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
 
     // What the frame cost and what the device has already admitted about itself: scene/heroes.js
     // spends a fast machine's headroom on more models and gives it back when the frames say so.
-    if (heroes) heroes.update(t, { frameMs, latched: latch.latched, saveData, bandPx: ctx.viewShift ? ctx.viewShift.bandHeightPx() : 0 });
+    if (heroes) heroes.update(t, { frameMs: capped ? freeFrameMs : frameMs, latched: latch.latched, saveData, bandPx: ctx.viewShift ? ctx.viewShift.bandHeightPx() : 0 });
     // Stars fade near the Sun's disc (scene/starfield.js sunGlare), wherever the camera is.
     if (starfield && starfield.setSun) starfield.setSun(worlds.drawnPositionOf('sun'), worlds.drawnRadiusUnits('sun'), ctx.camera);
     if (starfield && starfield.update) starfield.update(ctx.camera);
@@ -2414,6 +2480,25 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     if (ctx.hud) ctx.hud.frame(t);
     // The track's minute marks, on this frame's camera (render() brought its matrices up to date).
     if (ctx.trackLabels) ctx.trackLabels.update();
+    // Is anything moving? Asked after the frame is drawn, because render() is what brings the
+    // camera's matrices up to it. Any reason and the next frames are drawn one for one.
+    {
+      const st = ctx.trip && ctx.trip.state;
+      idle.drew(nowReal, movingReasons({
+        film: !!ctx.renderMode,
+        clockMode: clock.mode,
+        clockRate: clock.rate,
+        trip: !!(st && st.phase !== 'idle'),
+        autopilot: !!(ctx.autopilot && ctx.autopilot.engaged),
+        sky: !!(ctx.skyView && ctx.skyView.active),
+        stage: stage.worldId,
+        climb: !!((ctx.opening && ctx.opening.live) || (ctx.climb && ctx.climb.state && (ctx.climb.state.active || ctx.climb.state.fading)) || (ctx.imagine && ctx.imagine.active)),
+        selected: !!ctx.selected(),
+        cameraMoved: cameraMoved(),
+        animatedLayer: layerAnimating(nowReal),
+        loading: !window.__srLayersReady || gpuChanged(),
+      }));
+    }
     // The first frame is on screen: from now on the sharper maps may come, when the browser is idle.
     // AFTER THE FIRST VISIT TOO (2026-10-07, internal #415 item 3): the 4k maps are megabytes, and a
     // laptop used to start fetching them beside the catalogues, inside the stretch the byte gate

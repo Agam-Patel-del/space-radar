@@ -411,7 +411,8 @@ with tempfile.TemporaryDirectory() as tmp:
     ok(r.returncode == 0, f"deploy.sh --app-only --dry-run: {(r.stderr or r.stdout).strip().splitlines()[-1:]}")
     for d in ("about", "accuracy", "events", "iss", "planets-tonight", "satellites", "sources", "starlink", "teachers"):
         s = [c for c in calls if c.startswith("s3 sync") and f"s3://example-bucket/{d} " in c + " "]
-        ok(len(s) == 1 and "text/html" in s[0] and "no-cache" in s[0] and "--delete" in s[0], f"{d}/ is synced as no-cache HTML with --delete")
+        ok(len(s) == 1 and "text/html" in s[0] and "max-age=0, must-revalidate" in s[0] and "--content-encoding" not in s[0] and "--delete" in s[0],
+           f"{d}/ is synced as written, as HTML a browser revalidates on every load, with --delete")
     ok(re.search(r"would upload sitemap-images\.xml \(application/xml", r.stdout) is not None, "sitemap-images.xml is uploaded as XML")
     body = (ROOT / "scripts" / "deploy.sh").read_text(encoding="utf-8")
     ok('"/sitemap-images.xml"' in body and 'PATHS+=("/$dir/*")' in body and "share" in body, "the invalidation names the new directories and the image sitemap; share/ has its own PNG sync")
