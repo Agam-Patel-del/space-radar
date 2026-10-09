@@ -2637,10 +2637,13 @@ def check_stars_notable(exotics: list) -> list:
                 fail(where, f"`why:` says {phrase!r}, which is true on a date and not forever")
         if r.get("radius_suns") is not None:
             # A width an interferometer measured (internal #412): the radius, its error, the temperature and the page it was read on.
-            ok = all(isinstance(r.get(k), (int, float)) and not isinstance(r.get(k), bool) and r.get(k) > 0
-                     for k in ("radius_suns", "radius_err_suns", "teff_k", "teff_err_k"))
-            if not ok or r["radius_err_suns"] >= r["radius_suns"] or not (2000 <= r["teff_k"] <= 50000):
-                fail(where, "`radius_suns`, `radius_err_suns`, `teff_k` and `teff_err_k` must all be positive numbers, the error under the radius")
+            # The temperature is optional (a paper that measures a width, not a temperature, leaves it out and the
+            # disc keeps its colour-index estimate), but it comes WITH its error or not at all.
+            pos = lambda k: isinstance(r.get(k), (int, float)) and not isinstance(r.get(k), bool) and r.get(k) > 0  # noqa: E731
+            has_teff = r.get("teff_k") is not None or r.get("teff_err_k") is not None
+            ok = pos("radius_suns") and pos("radius_err_suns") and (not has_teff or (pos("teff_k") and pos("teff_err_k")))
+            if not ok or r["radius_err_suns"] >= r["radius_suns"] or (has_teff and not (2000 <= r["teff_k"] <= 50000)):
+                fail(where, "`radius_suns` and `radius_err_suns` must be positive numbers, the error under the radius; `teff_k` and `teff_err_k`, when given, both")
             if not STAR_SOURCE.match(str(r.get("physical_source") or "")):
                 fail(where, "`physical_source:` must be the page and the day it was read, \"https://... (read YYYY-MM-DD)\"")
         if not STAR_SOURCE.match(str(r.get("source") or "")):
@@ -3371,6 +3374,9 @@ def check_oddities(doc: dict, world_ids: set, sites: list) -> None:
 
 
 errors: list[str] = []
+# A registry-only copy (no site/js/main.js) may skip the list-file check, but only by saying so.
+NO_SITE_MODULES = os.environ.get("CHECK_REGISTRY_NO_SITE") == "1"
+LIST_EXPORTS_SKIPPED: list[str] = []
 
 
 def fail(where: str, msg: str) -> None:
@@ -4771,8 +4777,17 @@ def main() -> int:
             path, _, name = str(ref).partition("#")
             target = ROOT / path
             # A copy of the registry without the site's modules (tests/test_growth.py makes one) has
-            # nothing to look the table up in: the form is still held there, the file is not.
+            # nothing to look the table up in: the form is still held there, the file is not. That
+            # skip used to be silent, which made a tree that LOST site/js/main.js pass this check.
+            # Now it is a choice the caller makes out loud (CHECK_REGISTRY_NO_SITE=1, set by
+            # tests/test_growth.py, the only such caller), counted in the closing line; without it a
+            # missing main.js is a failure.
             if name and not (ROOT / "site" / "js" / "main.js").is_file():
+                if NO_SITE_MODULES:
+                    LIST_EXPORTS_SKIPPED.append(f"{where}.select.{key}")
+                    continue
+                fail(where, f"`select: {{{key}: {ref}}}` cannot be looked up: site/js/main.js is missing from this tree. "
+                            "A registry-only copy says so with CHECK_REGISTRY_NO_SITE=1")
                 continue
             if not name or not target.is_file():
                 fail(where, f"`select: {{{key}: {ref}}}` must be `<file>#<EXPORT>` naming a file that exists")
@@ -5200,6 +5215,8 @@ def main() -> int:
         # a figure a human copies out of a comment drifts, and a figure the check prints does not.
         f"{sum(1 for r in rockets if r.get('livery') == 'unknown')} of {len(rockets)} "
         f"with no sourced livery)"
+        + (f"; NOT CHECKED, no site/js/main.js and CHECK_REGISTRY_NO_SITE=1: {len(LIST_EXPORTS_SKIPPED)} hand-kept list export(s)"
+           if LIST_EXPORTS_SKIPPED else "")
     )
     return 0
 

@@ -38,6 +38,7 @@ Object.assign(COPY, {
       zone: 'Habitable zone, computed',
       starTemperature: 'Surface temperature',
       starWidth: 'Width',
+      starGlow: 'Glow',
       starMass: 'Mass',
       planets: 'Planets drawn',
       stars: 'Stars in the system',
@@ -93,6 +94,8 @@ Object.assign(COPY, {
     notMeasured: 'Not measured',
     starPoint: 'Not measured: drawn as a point of light',
     starWhite: 'Not measured: drawn white',
+    // The star is a point at whole-system scale (true size); its glow has a floor so its colour can be seen.
+    starGlowValue: 'Drawn wider than the star, in its colour, so it can be seen from far out',
     starsOne: '{n} in the catalogue; one is drawn',
     // A circumbinary system with a typed row for its pair (registry/systems-binaries.yaml, internal #475).
     starsBoth: 'Two, both drawn',
@@ -150,6 +153,18 @@ Object.assign(COPY, {
   offline: {
     updateReady: 'A newer version is ready',
     reload: 'Reload',
+  },
+  // "Keep for offline" on a trip's intro (ui/keeptrip.js, internal #551): one action that fetches the
+  // trip's voice, models, maps and music so the service worker has them. Live data is not kept.
+  keepTrip: {
+    keep: 'Keep for offline',
+    keepTitle: 'Save this trip’s voice, models and maps on this device so it plays with no connection',
+    keeping: 'Keeping {done} of {total}',
+    kept: 'Kept for offline',
+    keptTitle: 'Kept on this device. Press to fetch it again.',
+    keptNote: '{n} files, {size}, saved on this device. Live data (weather, storms, satellites) is not kept.',
+    again: 'Try again',
+    failedNote: 'Kept {done} of {total} files. Check the connection and try again.',
   },
   // ui/autopilot.js (spec 0036): a screen that plays the trips on its own. The mark is the only
   // chrome besides the captions; the gate is the one question it ever asks.
@@ -875,6 +890,9 @@ Object.assign(COPY, {
         binoculars: 'A 7° field: fainter stars come out.',
         telescope: 'A 1° field: planets become discs.',
       },
+      // The Telescope button with a planet in the middle keeps the view on it (sky/skyview.js follow()).
+      following: 'Following {name}. Drag the sky to let go.',
+      followSet: '{name} has set, so the view let go.',
       show: 'Lines and names',
       toggles: { figures: 'Figures', names: 'Names', art: 'Pictures', bounds: 'Borders', sunPath: 'Sun’s path', equator: 'Equator', grid: 'Grid', starGrid: 'Star grid', meteors: 'Meteors', trails: 'Trails', seeThrough: 'See-through ground' },
       toggleTitles: {
