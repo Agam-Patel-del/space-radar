@@ -126,8 +126,8 @@ const cardOf = (id) => (trip.stops.find((s) => s.id === id) || { card: {} }).car
   for (const t of DATES) {
     const day = new Date(t).toISOString().slice(0, 10);
     const eris = auOf('dwarf-eris', t);
-    check(eris >= 94.5 && eris < 96.5 && /ninety five times as far from the Sun/.test(cardOf('eris')),
-      `${day}: Eris is ${eris.toFixed(1)} au out and its card says ninety five`);
+    check(eris >= 94.5 && eris < 96.5 && /ninety-five times as far from the Sun/.test(cardOf('eris')),
+      `${day}: Eris is ${eris.toFixed(1)} au out and its card says ninety-five`);
     const voyager = auOf('deep-voyager-1', t);
     check(voyager > 170 && /more than 170 times the Earth's distance/.test(cardOf('voyager-1')),
       `${day}: Voyager 1 is ${voyager.toFixed(1)} au out and its card says more than 170`);
