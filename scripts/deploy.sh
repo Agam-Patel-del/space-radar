@@ -16,12 +16,19 @@
 #                         since 2026-10-07: they are code, stripped and stamped with the app),
 #                         the trip pages (t/), robots.txt
 #                         and the pages scripts/build_seo.py builds (o/, sitemap.xml, 404.html,
-#                         object-pages.json)
+#                         object-pages.json, and what scripts/seo_pages.py adds: starlink/, satellites/,
+#                         iss/, planets-tonight/, events/, about/, sources/, accuracy/, teachers/, share/,
+#                         sitemap-images.xml)
 #                         only. The usual case.
 #   --no-minify           upload js/ and css/ as they are written. By default a deploy uploads a
 #                         copy without comments and indentation (scripts/minify_site.py); this is
 #                         the way back if that copy is ever in doubt.
 #   --dry-run             print what would be uploaded and change nothing.
+#
+# Environment:
+#   INDEXNOW=1            after the app is uploaded, tell the IndexNow engines (Bing, Yandex and
+#                         others) which pages changed: scripts/indexnow.py. Off unless set; a failure
+#                         is a warning and never fails the deploy. The key file is always uploaded.
 #
 # WHY THIS IS A SCRIPT AND NOT ONE `aws s3 sync`
 # There is no build step, so nothing here is content-hashed. The app files must revalidate on
@@ -52,7 +59,7 @@ DRY_RUN=0
 MINIFY=1
 
 die() { echo "error: $*" >&2; exit 1; }
-usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -184,6 +191,13 @@ if [ "$WHAT" != "assets" ]; then
     APP="$BUILT/min"
     OVERLAY=(--overlay "$BUILT/min")
   fi
+  # INDEXNOW (opt-in, growth task): the sitemap that is live NOW, read before anything is uploaded, is
+  # what the new one is compared with after the upload. Only when INDEXNOW=1; a failure here is a
+  # warning and never stops the deploy (scripts/indexnow.py says why).
+  if [ "${INDEXNOW:-}" = "1" ] && [ "$DRY_RUN" != "1" ]; then
+    python3 "$(dirname "$0")/indexnow.py" fetch "$(python3 "$(dirname "$0")/indexnow.py" host)/sitemap.xml" "$BUILT/live-sitemap.xml" \
+      || echo "warning: could not read the live sitemap; IndexNow will send nothing" >&2
+  fi
   "${SYNC[@]}" "$APP/css" "s3://$BUCKET/css" \
     --cache-control "no-cache" --content-type "text/css; charset=utf-8" --delete
   # --exclude '*.md': the module contract documents the modules for whoever edits them. It is not code
@@ -222,10 +236,41 @@ if [ "$WHAT" != "assets" ]; then
   # t/: HTML, no-cache, and --delete, so an object that left the registry loses its page.
   # The press page is built FIRST: the sitemap names it only when it is in the tree (internal #398).
   python3 "$(dirname "$0")/build_press.py" --out "$BUILT" || die "scripts/build_press.py failed"
-  python3 "$(dirname "$0")/build_seo.py" --out "$BUILT" || die "scripts/build_seo.py failed"
+  # GROWTH PAGES (scripts/seo_pages.py, scripts/seo_share.py). The saved copy's index gives the pages' dated
+  # counts and sources' last-read days; it is fetched from the live site, best effort and never fatal (the
+  # pages fall back to registry/seo-facts.yaml, with its own date). The share pictures need Pillow,
+  # fontTools and brotli here; without them the pages keep their old pictures and the build says so.
+  SNAP=()
+  if [ "$DRY_RUN" != "1" ] && command -v curl >/dev/null; then
+    if curl -fsS --max-time 15 "${SNAPSHOT_INDEX_URL:-https://www.spaceradar.ai/data/v1/index.json}" -o "$BUILT/snapshot-index.json" 2>/dev/null; then
+      SNAP=(--snapshot-index "$BUILT/snapshot-index.json")
+    else
+      echo "    (the saved copy's index could not be read: the pages use registry/seo-facts.yaml's counts and say its date)"
+    fi
+  fi
+  python3 "$(dirname "$0")/build_seo.py" --out "$BUILT" ${SNAP[@]+"${SNAP[@]}"} || die "scripts/build_seo.py failed"
   python3 "$(dirname "$0")/check_seo.py" --out "$BUILT" || die "scripts/check_seo.py refused the built pages"
+  # The embed gallery (scripts/seo_embed.py, run by build_seo.py): HTML, no-cache, like the press page.
+  "${SYNC[@]}" "$BUILT/embed" "s3://$BUCKET/embed" --cache-control "no-cache" \
+    --exclude "*" --include "*.html" --content-type "text/html; charset=utf-8" --delete
+  "${SYNC[@]}" "$BUILT/embed" "s3://$BUCKET/embed" --cache-control "no-cache" \
+    --exclude "*" --include "*.js" --content-type "text/javascript; charset=utf-8" --delete
   "${SYNC[@]}" "$BUILT/o"  "s3://$BUCKET/o" \
     --cache-control "no-cache" --content-type "text/html; charset=utf-8" --delete
+  # The pages scripts/seo_pages.py builds, one directory each (starlink/, satellites/, iss/, events/, about/, ...;
+  # the list is $BUILT/pages-dirs.txt, so a new page is built and shipped by the same change), and share/, one
+  # picture per page (scripts/seo_share.py): PNG, long-lived is wrong for a page that can change, so no-cache like
+  # the HTML. HTML at /<dir>/index.html because the origin serves no index documents (scripts/build_seo.py).
+  while IFS= read -r dir; do
+    [ -n "$dir" ] || continue
+    if [ "$dir" = "share" ]; then
+      "${SYNC[@]}" "$BUILT/share" "s3://$BUCKET/share" --cache-control "no-cache" \
+        --exclude "*" --include "*.png" --content-type "image/png" --delete
+    else
+      "${SYNC[@]}" "$BUILT/$dir" "s3://$BUCKET/$dir" --cache-control "no-cache" \
+        --content-type "text/html; charset=utf-8" --delete
+    fi
+  done < "$BUILT/pages-dirs.txt"
   # The press page (public #293, scripts/build_press.py): the page, the README's screenshots and
   # the mark as SVG, built beside the object pages and not kept under site/. HTML no-cache like
   # the other pages; the pictures and the SVGs each by their own type, as the textures are.
@@ -247,9 +292,15 @@ if [ "$WHAT" != "assets" ]; then
   # index.html: a worker a browser cannot re-read is a release nobody can be moved off. The
   # manifest is no-cache too (a name or an icon list that changed must not wait a month).
   python3 "$(dirname "$0")/stamp_sw.py" --site "$SITE" ${OVERLAY[@]+"${OVERLAY[@]}"} --out "$BUILT/sw.js" || die "scripts/stamp_sw.py failed"
+  # The IndexNow key file (scripts/indexnow.py): <key>.txt at the root holding the key. The key is
+  # public by design and the file is always uploaded; it is how Bing and the others check that we own
+  # the site. Asking them to look at changed pages is a separate, opt-in step below.
+  KEYFILE="$(python3 "$(dirname "$0")/indexnow.py" key).txt"
   for f in "$SITE/index.html:text/html; charset=utf-8" "$BUILT/404.html:text/html; charset=utf-8" \
            "$SITE/robots.txt:text/plain; charset=utf-8" "$BUILT/sitemap.xml:application/xml; charset=utf-8" \
+           "$BUILT/sitemap-images.xml:application/xml; charset=utf-8" \
            "$BUILT/object-pages.json:application/json; charset=utf-8" \
+           "$BUILT/$KEYFILE:text/plain; charset=utf-8" \
            "$SITE/manifest.webmanifest:application/manifest+json; charset=utf-8" \
            "$BUILT/sw.js:text/javascript; charset=utf-8"; do
     path="${f%%:*}"; type="${f#*:}"; name="$(basename "$path")"
@@ -263,8 +314,26 @@ if [ "$WHAT" != "assets" ]; then
   done
 fi
 
+# INDEXNOW=1 ./scripts/deploy.sh ...  asks Bing, Yandex and the other IndexNow engines to look at the pages
+# whose lastmod changed (or that are new) since the sitemap that was live before this deploy. Off by
+# default. It runs last, after everything is uploaded, and whatever happens it never fails the deploy.
+if [ "$WHAT" != "assets" ] && [ "${INDEXNOW:-}" = "1" ]; then
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "  would ping IndexNow for the pages that changed (INDEXNOW=1)"
+  else
+    echo "==> IndexNow: the pages that changed"
+    python3 "$(dirname "$0")/indexnow.py" ping "$BUILT/live-sitemap.xml" "$BUILT/sitemap.xml" \
+      || echo "warning: the IndexNow ping failed; the deploy is not affected" >&2
+  fi
+fi
+
 if [ -n "$DISTRIBUTION" ] && [ "$DRY_RUN" != "1" ]; then
   PATHS=("/" "/index.html" "/js/*" "/css/*" "/vendor/*" "/t/*" "/o/*" "/press/*" "/robots.txt" "/sitemap.xml" "/404.html" "/object-pages.json" "/manifest.webmanifest" "/sw.js")
+  # The pages seo_pages.py built, each by its directory, and the pictures and the image sitemap with them.
+  if [ -f "${BUILT:-/nonexistent}/pages-dirs.txt" ]; then
+    while IFS= read -r dir; do [ -n "$dir" ] && PATHS+=("/$dir/*"); done < "$BUILT/pages-dirs.txt"
+    PATHS+=("/sitemap-images.xml")
+  fi
   if [ "$WHAT" != "app" ]; then
     # The data files were just pushed and keep their names: expire the edge copies now.
     PATHS+=("/data/*")
