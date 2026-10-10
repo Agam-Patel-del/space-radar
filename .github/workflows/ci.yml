@@ -193,6 +193,10 @@ jobs:
         run: node tests/test_objectnow.mjs
       - name: "The KTX2 plan, its flags and GPU bytes, run against a fake encoder (internal #156)"
         run: python3 tests/test_ktx2_plan.py
+      - name: "The AVIF trial finds the lowest quality at the SSIM floor, for both codecs (internal #530; skips without Pillow's AVIF)"
+        run: python3 tests/test_avif_trial.py
+      - name: "the Milky Way shader's spike cut takes the baked stars out of the 2k panorama and keeps its glow (internal #547; skips without NumPy)"
+        run: python3 tests/test_milkyway_opening.py
       - name: The walk notices another project's headless Chrome (internal #460)
         run: node tests/test_chrome_quiet.mjs
       - name: The prepared cloud workflow stays minimal (internal #139)
@@ -770,6 +774,8 @@ jobs:
         run: node tests/test_propagate_worker.mjs
       - name: "the constellation figures as strokes, with the stars at their corners"
         run: node tests/test_figures.mjs
+      - name: "our stars step aside inside a drawn nebula picture"
+        run: node tests/test_starholes.mjs
       - name: "the nebulae's photographs in the sky from the ground"
         run: node tests/test_groundpictures.mjs
       - name: "the HEALPix tile addressing a HiPS sky is read with"
@@ -814,6 +820,8 @@ jobs:
         run: node tests/test_render_ready.mjs
       - name: "the UI guide: spacing grid, loaded weights, numbers in the copy, one primary, no dim grey inside a wash, no stale counts (internal #375, #198)"
         run: node tests/test_guide_rails.mjs
+      - name: "Bulk 3 a: the phone's search list above the launch chip, the sky field line under it (internal #563, #565)"
+        run: node tests/test_bulk3_a.mjs
       - name: "the trips walk, the node half: every stop resolves, has its narration and a picture (spec 0044 task 3, internal #123)"
         run: node tests/test_trips_walk.mjs
       - name: "Back and Forward over shared views, a tracked object that loses its position, old comet links, the launch card's mission (public #331, #348, #367, #378)"
@@ -824,6 +832,12 @@ jobs:
         run: python3 tests/test_release_zip.py
       - name: "the stripped tree: the scanner on its hard cases, every module through it"
         run: python3 tests/test_minify.py
+      - name: "the boot timeline's budget rows, judgement and probe (internal #528)"
+        run: node tests/test_boot_timeline.mjs
+      - name: "the sky from the ground's Milky Way shader opens the 2k panorama, whose stars are baked in (internal #547; reads source text)"
+        run: node tests/test_sky_shaders_src.mjs
+      - name: "shader text in templates loses its comments and indentation, each shader checked, switched off by default (internal #553 / #531)"
+        run: python3 tests/test_strip_shaders.py
       - name: "stored at Brotli 11: one rule in deploy.sh, verify-deploy.sh and the edge function; copies decode byte for byte (internal #514)"
         run: node tests/test_precompress.mjs
       - name: "the minifier a deploy runs: pinned by hash, licence headers kept, maps true, and the node tests pass against the tree it writes (internal #515)"

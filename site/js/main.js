@@ -59,7 +59,7 @@ import { createGroundTrack } from './scene/groundtrack.js';
 import { createTrackLabels } from './ui/tracklabels.js';
 import { createOrbitRings, periodMsOfWorld, MARKER_PX } from './scene/orbitrings.js';
 import { tripOwnsCard } from './ui/tripstate.js';
-import { createFrameLatch, shouldSaveData, chooseTier, createTierPromoter, createIdleGate, idleCapWanted, movingReasons } from './scene/quality.js';
+import { createFrameLatch, createScaleGovernor, shouldSaveData, chooseTier, createTierPromoter, createIdleGate, idleCapWanted, movingReasons } from './scene/quality.js';
 import { createLiveClouds } from './scene/liveclouds.js';
 import { createTextureTiers, gpuMiB, variantFor, LIVE_CLOUDS_MIB } from './scene/texturetiers.js';
 import { TEXTURES } from './data/textures.js';
@@ -1969,7 +1969,7 @@ export async function boot({ setStatus } = {}) {
     }
     if (plan.trip) ctx.trip.stop();
     // A mission's event (ui/missions.js): it selects its own record and sets the clock.
-    if (plan.event) { ctx.wantMissions().then((m) => { if (!m || !m.openEvent(ctx, plan.event)) linkNote(ctx, COPY.mission.unknown, ['event']); }); return; }
+    if (plan.event) { ctx.wantMissions().then((m) => (m ? m.openEventWhenReady(ctx, plan.event) : false)).then((ok) => { if (!ok) linkNote(ctx, COPY.mission.unknown, ['event']); }); return; }
     if (plan.at && plan.at.open) openAt(ctx, plan.at.open);
     else if (plan.at) ctx.deselect();
     if (keys.cam) applyCam(ctx, keys.cam);
@@ -2068,8 +2068,10 @@ function createQuality(ctx, renderer, starfield, worlds) {
   const aniso = renderer.capabilities && renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 8;
   const loader = new THREE.TextureLoader();
   const earthMesh = () => worlds.meshFor('earth');
+  const deviceOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
   const tiers = createTextureTiers({
     tier: pick.tier,
+    offline: deviceOffline,
     month: () => new Date(clock.now()).getUTCMonth() + 1,
     // decode() before the texture is handed over: Chrome otherwise decodes a 4k image on the main
     // thread inside the upload, in the middle of a frame.
@@ -2130,6 +2132,9 @@ function createQuality(ctx, renderer, starfield, worlds) {
   const tilesSaveData = shouldSaveData(nav.connection);
   function planetTilesWanted() {
     if (planetTilesAsked || tilesSaveData || tiers.latched || tiers.tier < 1) return;
+    // OFFLINE (internal #564, the integration pass of 2026-10-10): a kept trip played with no network asked
+    // NASA's Moon mosaic for six tiles that could only fail. Asked again by the next tick once the network is back.
+    if (deviceOffline()) return;
     if (!worlds.ids().some((id) => id !== 'sun' && worlds.discShare(id) >= (id === 'earth' ? EARTH_TILES_AT : PLANET_TILES_AT))) return;
     planetTilesAsked = true;
     import('./scene/tiles.js').then((m) => {
@@ -2236,9 +2241,14 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
   // The frame-rate latch (spec 0026 req 18): twenty-frame median over 33 ms for three seconds ->
   // one device pixel per CSS pixel and no Milky Way picture, once, said in the panel.
   const latch = createFrameLatch();
+  // The step before it (internal #521): 2, 1.5, 1.25, 1 of the device's pixel ratio; the latch is fed
+  // only from the lowest step, and stays the last resort.
+  const scaler = createScaleGovernor({ deviceRatio: typeof devicePixelRatio === 'number' ? devicePixelRatio : 1 });
+  ctx.scaler = scaler;
   // Read every frame by the aurora's folds; one query object, not a matchMedia call a frame.
   const reducedMotionQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   function degrade() {
+    scaler.freeze();
     if (ctx.renderer && ctx.rendererApi && ctx.rendererApi.setQuality) ctx.rendererApi.setQuality('low');
     if (starfield && starfield.setDetail) starfield.setDetail('low');
     if (ctx.nebulae) ctx.nebulae.setSkyVisible(false);
@@ -2286,6 +2296,7 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
   // announced, so a flight started from anywhere and a map landing from anywhere are both seen.
   const seenCamera = new Float64Array(18);
   let seenGpu = -1;
+  let cameraMovedLast = false;  // the scale governor steps up only while the camera is still
   let wasCapped = false;
   let freeFrameMs = 16;
   function cameraMoved() {
@@ -2348,7 +2359,21 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     // Not while filming: a film's frames are all one step long (33 ms at 30 fps), which the latch
     // would read as a slow device and answer by throwing the picture's quality away.
     if (!capped) freeFrameMs = frameMs;
-    if (!document.hidden && !ctx.renderMode && !capped && latch.push(frameMs, nowReal)) degrade();
+    if (!document.hidden && !ctx.renderMode && !capped && !latch.latched) {
+      const st = ctx.trip && ctx.trip.state;
+      const shown = !!(st && st.phase !== 'idle') || !!(ctx.autopilot && ctx.autopilot.engaged) || !!(ctx.climb && ctx.climb.state && (ctx.climb.state.active || ctx.climb.state.fading));
+      const calm = !shown && !cameraMovedLast;
+      if (scaler.push(frameMs, nowReal, calm, !shown)) {
+        if (ctx.rendererApi && ctx.rendererApi.setScale) ctx.rendererApi.setScale(scaler.scale);
+        window.dispatchEvent(new CustomEvent('sr:scale', { detail: { ratio: scaler.scale, step: scaler.step } }));
+      }
+      if (scaler.atFloor && latch.push(frameMs, nowReal)) degrade();
+    } else if (capped && !document.hidden && !ctx.renderMode && !latch.latched && scaler.rest(nowReal)) {
+      // The resting view (the idle cap): its frames are slow by choice and never fed above, so the ladder
+      // would wait for the next thing that moves. Rest counts as quick (scene/quality.js).
+      if (ctx.rendererApi && ctx.rendererApi.setScale) ctx.rendererApi.setScale(scaler.scale);
+      window.dispatchEvent(new CustomEvent('sr:scale', { detail: { ratio: scaler.scale, step: scaler.step } }));
+    }
     if (ctx.quality && !document.hidden) {
       if (!capped) ctx.quality.frame(frameMs, nowReal, latch.latched);
       if (nowReal - lastTierTick >= 1000) { lastTierTick = nowReal; ctx.quality.tick(nowReal); }
@@ -2487,6 +2512,8 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     if (ctx.dsoGlow) ctx.dsoGlow.update(ctx.camera, ctx.renderer, ctx.isLayerDrawable(layerRec('deep-sky')));
     if (ctx.nebulae) {
       ctx.nebulae.update(ctx.camera, ctx.renderer, ctx.isLayerOn('deep-sky'), ctx.isLayerDrawable(layerRec('deep-sky')));
+      // Our stars step aside inside a drawn photograph, which carries its own (scene/starholes.js, internal #344).
+      { const holes = ctx.nebulae.holes(); if (ctx.starfield && ctx.starfield.setHoles) ctx.starfield.setHoles(holes); if (ctx.stars3d && ctx.stars3d.setHoles) ctx.stars3d.setHoles(holes); }
       // Andromeda's photograph and her stand-in model never draw over each other (scene/galaxy.js).
       if (ctx.galaxy) ctx.galaxy.setAndromedaShare(1 - ctx.nebulae.drawn('dso-m31'));
       // Her two companions' ellipses step back with it: the photograph holds them (scene/dsoglow.js).
@@ -2536,7 +2563,7 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
         stage: stage.worldId,
         climb: !!((ctx.opening && ctx.opening.live) || (ctx.climb && ctx.climb.state && (ctx.climb.state.active || ctx.climb.state.fading)) || (ctx.imagine && ctx.imagine.active)),
         selected: !!ctx.selected(),
-        cameraMoved: cameraMoved(),
+        cameraMoved: (cameraMovedLast = cameraMoved()),
         animatedLayer: layerAnimating(nowReal),
         loading: !window.__srLayersReady || gpuChanged(),
       }));
@@ -2585,7 +2612,9 @@ async function loadAllLayers(ctx, layerRecords, glyphLayers, scene) {
     // One mark per object: the dot fades out as that record's 3D model fades in.
     // Read through ctx at call time: this function has no `heroes` of its own (the first version
     // named one, and the browser check said `heroes is not defined` -- no unit test could).
-    gl.setModelOpacity((id) => (ctx.heroes ? ctx.heroes.drawnOpacity(id) : 0));
+    // A deep-sky dot also gives way to its own glow once that is wider than it (scene/dsoglow.js dotYield).
+    const deepSky = layer.id === 'deep-sky';
+    gl.setModelOpacity((id) => Math.max(ctx.heroes ? ctx.heroes.drawnOpacity(id) : 0, deepSky && ctx.dsoGlow ? ctx.dsoGlow.dotYield(id) : 0));
     gl.setRecords([]);
     // Hidden until its records arrive; one() then sets the real visibility. This loop runs
     // before the first await, and ctx.isLayerOn is attached to ctx after this function is
@@ -2786,8 +2815,9 @@ function applyUrlState(ctx, st) {
   if (st.trip && openTrip(ctx, st)) return;
   // A mission's event (ui/missions.js): it selects its own record, so `at` beside it is not read.
   if (st.event && typeof ctx.wantMissions === 'function') {
-    ctx.wantMissions().then((m) => {
-      if (m && m.openEvent(ctx, st.event)) return;
+    // A known event whose record is in a layer that has not landed is waited for (ui/missions.js openEventWhenReady), not called unknown.
+    ctx.wantMissions().then((m) => (m ? m.openEventWhenReady(ctx, st.event) : false)).then((ok) => {
+      if (ok) return;
       linkNote(ctx, COPY.mission.unknown, ['event']);
       if (st.at) openAt(ctx, st.at);
     });

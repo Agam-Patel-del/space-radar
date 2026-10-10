@@ -1078,6 +1078,24 @@ export function oblateRadii(f) {
 }
 
 /**
+ * How finely a world's sphere is cut. A facet's middle sags under the true surface by R (1 - cos(half a step)):
+ * 2.1 km on the Moon at 64 segments, which is the height a ground site's lander (placed on the true radius)
+ * floated above the drawn ground, and the shell the stars showed under (public #406, internal #565). The two
+ * worlds that carry ground sites (registry/sites.yaml: the Moon and Mars) are cut finely enough that the sag is
+ * under a quarter of a kilometre; the camera cannot go nearer than ~35 km, so nothing shows it. Pure.
+ */
+export const SITE_BODIES = new Set(['moon', 'mars']);
+export function segmentsFor(id) { return SITE_BODIES.has(id) ? { width: 192, height: 96 } : { width: 64, height: 48 }; }
+/**
+ * The fine cut is worn from this disc size up (a share of HALF the view's height, as discShare gives it): 0.05
+ * is a disc 45 px across in a view 900 px tall, where 64 segments are a third of a pixel from round. Pure.
+ */
+export const FINE_CUT_AT = 0.05;
+export function fineCutWanted(share) { return Number.isFinite(share) && share >= FINE_CUT_AT; }
+/** The deepest a facet sags under the sphere, km: the middle of a longitude step on the equator. Pure. */
+export function sagKm(radiusKm, widthSegments) { return radiusKm * (1 - Math.cos(Math.PI / widthSegments)); }
+
+/**
  * A unit sphere pressed into that spheroid, +Y the pole: SphereGeometry's vertices, faces and
  * texture coordinates (the map lands where it did, in planetocentric latitude), with the spheroid's
  * own normals, so the light and the limb are the flattened body's.
@@ -1498,13 +1516,19 @@ export function createWorlds(scene, opts = {}) {
         clouds: texture(w.look.clouds),
       })
       : new THREE.Mesh(
-        w.look.oblate ? oblateGeometry(w.look.oblate, 64, 48) : new THREE.SphereGeometry(1, 64, 48),
+        w.look.oblate ? oblateGeometry(w.look.oblate, segmentsFor(w.id).width, segmentsFor(w.id).height) : new THREE.SphereGeometry(1, segmentsFor(w.id).width, segmentsFor(w.id).height),
         // The Sun is not lit by anything, so it does not get the world material: a flat disc of
         // its own texture, out of the tone mapper's way so it stays white rather than grey.
         w.look.emissive
           ? new THREE.MeshBasicMaterial({ map, color: tint, toneMapped: false, fog: false })
           : worldMaterial(map, tint),
       );
+    // The fine cut is for the camera near the ground; from anywhere else the world is drawn with the 64 x 48
+    // sphere it always had (update() swaps them by the disc's size on screen, fineCutWanted).
+    if (!w.look.earth && SITE_BODIES.has(w.id)) {
+      mesh.userData.cut = { fine: mesh.geometry, coarse: w.look.oblate ? oblateGeometry(w.look.oblate, 64, 48) : new THREE.SphereGeometry(1, 64, 48) };
+      mesh.geometry = mesh.userData.cut.coarse;
+    }
     if (!w.look.earth && w.look.map) {
       const material = mesh.material;
       const job = {
@@ -1923,6 +1947,17 @@ export function createWorlds(scene, opts = {}) {
         if (!(dist > 0) || mesh.scale.x / dist / tanHalfFov >= TEXTURE_AT_HALF_VIEW) fetchShape(w.id);
       }
     }
+    // 5b. The two finely cut worlds (the Moon and Mars, for their ground sites) wear the fine sphere only when
+    //     they are a disc on screen. Found by CI's trips walk on 2026-10-10: 61 000 triangles a frame for two
+    //     dots, at every stop of every trip, and nine star-stage stops over triangles_per_stop.
+    for (const id of SITE_BODIES) {
+      const mesh = meshes.get(id);
+      const cut = mesh && mesh.userData.cut;
+      if (!cut) continue;
+      const g = fineCutWanted(discShare(id)) ? cut.fine : cut.coarse;
+      if (mesh.geometry !== g) mesh.geometry = g;
+    }
+
     // 6. Past the count this device may hold, the world that has been a dot the longest gives its
     //    map back (MAPS_HELD).
     trimMaps();
@@ -2285,6 +2320,7 @@ export function createWorlds(scene, opts = {}) {
   function dispose() {
     if (stage.viewAdjust === viewAdjust) stage.setViewAdjust(null);
     for (const mesh of meshes.values()) {
+      if (mesh.userData.cut) { mesh.userData.cut.fine.dispose(); mesh.userData.cut.coarse.dispose(); }
       mesh.traverse((o) => {
         if (o.geometry) o.geometry.dispose();
         if (o.material) {

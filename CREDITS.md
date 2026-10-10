@@ -587,6 +587,7 @@ than counted by hand.
 | `saturn-v.glb` | Saturn V (NASA/Michael D. Carbajal) | the Saturn V on Launch Complex 39A (`saturn-v-lc-39a`) | 96 KB |
 | `shuttle-stack.glb` | Space Shuttle (A) (NASA/Michael D. Carbajal): the orbiter on its tank and boosters | the Space Shuttle on Launch Complex 39B (`shuttle-lc-39b`) | 130 KB |
 | `rosetta.glb` | Rosetta | Horizons -226 (Rosetta, 2004 to 2016) | 125 KB |
+| `new-horizons.glb` | New Horizons: NASA's printable body, antenna and RTG parts (science.nasa.gov/3d-resources/new-horizons, read 2026-10-10; the page names no author), assembled by us, colours ours | Horizons -98 (New Horizons) | 64 KB |
 | `near.glb` | NEAR Shoemaker | Horizons -93 (NEAR Shoemaker, 1996 to 2001) | 88 KB |
 | `stardust.glb` | Stardust (NASA/Brian E. Kumanchik; NASA/Christian A. Lopez) | Horizons -29 (Stardust, 1999 to 2011) | 111 KB |
 | `deep-impact.glb` | Deep Impact (EPOXI) (NASA/Brian E. Kumanchik; NASA/Christian A. Lopez) | Horizons -140 (Deep Impact, 2005 to 2013) | 73 KB |
@@ -929,6 +930,17 @@ repository, read both sets of terms yourself**: a share-alike compilation does n
 ESA's terms mean for the catalogues inside it, and we are not lawyers. Credit to keep wherever
 the stars are shown with credits: *Stars: HYG v4.4 and AT-HYG v4.0, David Nash, CC BY-SA 4.0;
 from the Hipparcos and Tycho-2 catalogues (ESA).*
+
+*Read again on 2026-10-10 (for the line "deeper stars", internal #547):* AT-HYG's page on Codeberg
+(<https://codeberg.org/astronexus/athyg>) still says "This work is licensed under a Creative Commons
+Attribution-ShareAlike 4.0 International License" and describes the database as one with "over 2.5
+million stars", built on Tycho-2, whose coverage the same page gives as "essentially complete to V = 11,
+mostly complete to V = 11.5". So the stars between magnitude 10.5 and 11 are available under the licence
+this site already follows; they have not been added (the cut at 10.5 is in `scripts/build-startiles.py`,
+and the reduced subset it reads, `athyg_40_reduced_m11`, already stops at 11). Tycho-2 itself: the
+Copenhagen page (<https://www.astro.ku.dk/~erik/Tycho-2/>) states no licence and the CDS ReadMe for I/259
+(<https://cdsarc.cds.unistra.fr/ftp/I/259/ReadMe>) could not be read through the page fetcher, so Tycho-2
+directly is not adopted. Gaia stays out for the reason above.
 
 **The colour of the sky** (`site/js/sky/skyair.js`) is computed, not a picture: sunlight scattered
 once by air (Rayleigh) and haze (Mie) with ozone's absorption, using the coefficients the graphics
