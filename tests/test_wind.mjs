@@ -100,7 +100,7 @@ check(Number.isFinite(W.sampleWind(grid, 90, 0).u) && Number.isFinite(W.sampleWi
   await new Promise((r) => setTimeout(r, 20));
   const st = wind.state();
   check(st.status === 'shown' && st.kind === 'wind' && st.cls === 'modelled' && st.date === grid.timeMs && st.legend === S.WIND_LEGEND && near(st.maxSpeed, grid.maxSpeed, 1e-4) && st.speedup === 86400 && st.still === false, `shown, with the forecast hour and what the legend needs (${JSON.stringify({ ...st, legend: undefined })})`);
-  check(asked && asked.u === url && asked.init.credentials === 'omit' && asked.init.referrerPolicy === 'no-referrer', 'one request, with no credentials and no referrer');
+  check(asked && asked.u === 'data/v1/wind.json' && asked.init.credentials === 'omit' && asked.init.referrerPolicy === 'no-referrer', 'one request, for our saved copy, with no credentials and no referrer');
   const lines = wind.lines();
   const pos = lines.geometry.attributes.position;
   check(earth.children[0] === lines && lines.isLineSegments && pos.count === S.COUNT * S.TRAIL * 2 && lines.geometry.attributes.color.itemSize === 4, `${S.COUNT} streaks of ${S.TRAIL} pieces, children of the Earth's mesh so they turn with it`);
@@ -165,6 +165,21 @@ check(Number.isFinite(W.sampleWind(grid, 90, 0).u) && Number.isFinite(W.sampleWi
   broken.dispose();
 }
 
+// ---- 4b. only the saved copy (internal #552) --------------------------------------------------------------
+{
+  const seen = [];
+  const doc0 = table(() => [10, 3]);
+  const wrapped = JSON.stringify({ schema: 1, source: 'wind', fetched_at: '2026-10-09T15:05:00Z', valid_until: '2026-10-09T18:05:00Z', body: doc0 });
+  const g = await W.fetchWind({ fetch: async (u) => { seen.push(u); return { ok: true, status: 200, text: async () => wrapped }; } });
+  check(seen.length === 1 && seen[0] === 'data/v1/wind.json' && W.WIND_SNAPSHOT_URL === 'data/v1/wind.json', `it asks our own folder, relative to the page, and nobody else (${seen})`);
+  check(g && g.nLat === 37 && g.nLon === 72, 'and reads the harvester\'s wrapper as the grid');
+  check(!/pae-paha/.test(src('site/js/data/wind.js').split('export async function fetchWind')[1] || ''), 'fetchWind names no other host');
+  const row = src('registry/sources.yaml');
+  check(/- id: wind\n\s+url: https:\/\/pae-paha\.pacioos\.hawaii\.edu\/erddap\/griddap\/ncep_global\.json\?[^\n]*\{hour3\}[^\n]*\n\s+auth: none\n\s+browser: false\n\s+cadence: 3h/.test(row), 'the registry row is the harvester\'s three-hourly, browser: false');
+  const panel = src('site/js/ui/overlaypanel.js');
+  check(/snapshotAvailable\('wind'\)/.test(panel), 'the panel offers the wind only when the manifest lists a copy');
+}
+
 // ---- 5. nothing at boot, and the evidence ---------------------------------------------------------------
 {
   const main = src('site/js/main.js');
@@ -177,6 +192,21 @@ check(Number.isFinite(W.sampleWind(grid, 90, 0).u) && Number.isFinite(W.sampleWi
   check(/Access-Control-Allow-Origin:\s*\n?\/\/\s*\*|Access-Control-Allow-Origin: \*/.test(data.replace(/\n\/\/\s+/g, ' ')) && /TESTED ON 2026-10-07/.test(data) && /NOMADS/.test(data) && /CoastWatch/.test(data) && /Open-Meteo/.test(data) && /may be used and redistributed for free/.test(data), 'data/wind.js says what was tested, what was kept, what was not and the terms');
   const credits = src('CREDITS.md');
   check(/pae-paha\.pacioos\.hawaii\.edu/.test(credits) && /Global Forecast System/.test(credits), 'CREDITS.md names the model and the server');
+}
+
+// TIER COUNTS (internal #146): the streaks follow the device tier, and data saving halves each.
+{
+  check(JSON.stringify(S.COUNT_BY_TIER) === '[600,1200,2400]' && S.COUNT_BY_TIER[1] === S.COUNT, 'tiers 0, 1 and 2 draw 600, 1200 and 2400 streaks, tier 1 the default');
+  check(S.streakCount(0) === 600 && S.streakCount(1) === 1200 && S.streakCount(2) === 2400 && S.streakCount(undefined) === 1200 && S.streakCount(9) === 2400 && S.streakCount(-3) === 600, 'streakCount clamps and defaults to tier 1');
+  check(S.streakCount(2, true) === 1200 && S.streakCount(0, true) === 300, 'data saving halves whatever the tier gave');
+  const e0 = { children: [], add(o) { this.children.push(o); } };
+  const THREE_ = await import(join(ROOT, 'site/vendor/three.module.min.js'));
+  const mesh = new THREE_.Mesh(new THREE_.SphereGeometry(1, 8, 8));
+  const w0 = S.createWind({ earth: () => mesh, tier: 0 });
+  w0.set(true);
+  const lines0 = w0.lines ? w0.lines() : null;
+  check(lines0 === null || lines0.geometry.attributes.position.count === 600 * S.TRAIL * 2, 'a tier 0 wind allocates 600 streaks');
+  w0.dispose();
 }
 
 if (problems.length) { console.error('wind FAILED:\n  ' + problems.join('\n  ')); process.exit(1); }

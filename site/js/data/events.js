@@ -214,14 +214,91 @@ export function approachItem(r, nowMs, horizonMs) {
   return null;
 }
 
+// THE PASSES ARE WORKED OUT ONCE A QUARTER OF AN HOUR, NOT ONCE A MINUTE. ui/next.js rebuilds its list
+// every 60 s, and with a place set that was a day of passes for some 180 satellites each time: MEASURED
+// 2026-10-10 on an Iris Plus 640 laptop as one frame of 1.5 to 3.4 s a minute (the "three-second stall
+// on the galaxy rung" of the roof trip was this, landing wherever the trip happened to be). A day of
+// passes does not change in a minute, so the answer is kept for the same place, the same elements and a
+// clock within PASS_MEMO_MS after the moment it was worked out for; a pass that has ended is left out.
+export const PASS_MEMO_MS = 15 * 60e3;
+let passMemo = null;
+let passWork = 0;
+/** How many times a day of passes has been worked out (tests/test_events.mjs counts, rather than times, the memo). */
+export const passWorkCount = () => passWork;
+
+// OFF THE MAIN THREAD (internal #562, 2026-10-10). Even kept for a quarter of an hour, the first working
+// out after boot, and each one after a jumped clock or a new place, was one task of 1.5 to 3.6 s. A page
+// that hands in a runner (ui/next.js: sky/passclient.js, the worker that already runs predictPasses for
+// the Tonight view) gets the rows it HAS (an expired answer for the same place and elements, with the
+// passes that ended left out; otherwise none) and is told through onPassesReady when the new answer is
+// in. Nothing hands in a runner in node, so the tests and every other caller work as they did.
+let passRunner = null;
+let passPending = '';
+const passListeners = new Set();
+/** `run(message) -> Promise<{passes}>` (sky/passclient.js runPasses), or null to work them out in place again. */
+export function usePassRunner(run) { passRunner = typeof run === 'function' ? run : null; passPending = ''; }
+/** Call `fn` when a day of passes has been worked out off the main thread; returns the way to stop. */
+export function onPassesReady(fn) { passListeners.add(fn); return () => passListeners.delete(fn); }
+
+function askRunner(withOrbits, key, nowMs, observer) {
+  if (passPending === key) return;
+  passPending = key;
+  const byId = new Map(withOrbits.map((r) => [r.id, r]));
+  const msg = {
+    fromMs: nowMs,
+    hours: 24,
+    observer: { latRad: observer.latRad, lonRad: observer.lonRad, latDeg: observer.latDeg, lonDeg: observer.lonDeg, altKm: observer.altKm || 0 },
+    records: withOrbits.map((r) => ({ id: r.id, name: r.name, satrec: r.satrec, meta: {} })),
+  };
+  passWork += 1;
+  new Promise((resolve) => resolve(passRunner(msg))).then((data) => {
+    if (passPending === key) passPending = '';
+    const rows = [];
+    for (const p of (data && data.passes) || []) {
+      const record = byId.get(p.recordId);
+      if (!record || p.visible !== true) continue;
+      const item = { kind: 'pass', record, tMs: p.startMs, peakEl: p.peakEl };
+      rows.push({ item, endMs: Number.isFinite(p.endMs) ? p.endMs : p.startMs + 15 * 60e3 });
+    }
+    passMemo = { key, place: key.split('|').slice(0, 5).join('|'), atMs: nowMs, rows };
+    for (const fn of [...passListeners]) { try { fn(); } catch { /* a listener is its own business */ } }
+  }).catch(() => { if (passPending === key) passPending = ''; });
+}
+
+const placeKey = (o) => [o.latRad, o.latDeg, o.lonRad, o.lonDeg, o.altKm].join('|');
 function passItems(records, nowMs, observer) {
   const out = [];
   if (!validObserver(observer)) return out;
   const withOrbits = (Array.isArray(records) ? records : []).filter((r) => r && r.satrec && (r.layer === 'stations' || r.layer === 'visual'));
   if (!withOrbits.length) return out;
+  let epochs = 0;
+  for (const r of withOrbits) epochs += Number(r.satrec.jdsatepoch) || 0;
+  const key = [placeKey(observer), withOrbits.length, withOrbits[0].id, epochs].join('|');
+  if (passMemo && passMemo.key === key && nowMs >= passMemo.atMs && nowMs - passMemo.atMs < PASS_MEMO_MS) {
+    return passMemo.rows.filter((row) => row.endMs > nowMs).map((row) => ({ ...row.item }));
+  }
+  if (passRunner) {
+    askRunner(withOrbits, key, nowMs, observer);
+    // The last answer for the same PLACE is better than a blank while the new one is on its way. Not only for
+    // the same elements (integration pass, 2026-10-10: a second catalogue landing ten seconds after the first
+    // changed the key, and the three passes on the list went away for two seconds and came back): a day-old
+    // prediction is off by seconds, and the row is replaced the moment the worker answers. Each row is handed
+    // the record the catalogue holds NOW under its id; one that has left the catalogue has no row.
+    const place = placeKey(observer);
+    if (!passMemo || passMemo.place !== place || nowMs < passMemo.atMs || nowMs - passMemo.atMs >= 24 * 3600e3) return [];
+    const now = new Map(withOrbits.map((r) => [r.id, r]));
+    return passMemo.rows.filter((row) => row.endMs > nowMs && now.has(row.item.record.id)).map((row) => ({ ...row.item, record: now.get(row.item.record.id) }));
+  }
   try {
+    passWork += 1;
     const passes = predictPasses(withOrbits, observer, nowMs, 24).filter((p) => p.visible === true);
-    for (const p of passes) out.push({ kind: 'pass', record: p.record, tMs: p.startMs, peakEl: p.peakEl });
+    const rows = [];
+    for (const p of passes) {
+      const item = { kind: 'pass', record: p.record, tMs: p.startMs, peakEl: p.peakEl };
+      out.push(item);
+      rows.push({ item: { ...item }, endMs: Number.isFinite(p.endMs) ? p.endMs : p.startMs + 15 * 60e3 });
+    }
+    passMemo = { key, place: key.split('|').slice(0, 5).join('|'), atMs: nowMs, rows };
   } catch { /* a pass we could not compute is a row we do not print */ }
   return out;
 }

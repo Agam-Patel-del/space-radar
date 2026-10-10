@@ -82,6 +82,9 @@ def mutate(path: Path, text: str) -> None:
 # whatever order they finish in.
 JOBS = os.cpu_count() or 2
 ENV: dict = dict(os.environ)
+# The work trees below hold the registry and the SEO pages, not site/js/main.js, so the hand-kept list check
+# (scripts/check_registry.py) is opted out of out loud, as tests/test_growth.py does.
+ENV["CHECK_REGISTRY_NO_SITE"] = "1"
 
 
 def run_cases(fn, cases, tmp: Path) -> int:
@@ -125,6 +128,15 @@ CASES: list[tuple[str, str, str, str]] = [
      "oldest-notes.yaml", '    source: "https://en.wikipedia.org/wiki/Vanguard_1"\n', ""),
     ("a line about an old satellite with no day it was read",
      "oldest-notes.yaml", "    read: 2026-10-08\n    quote: \"The spacecraft", "    quote: \"The spacecraft"),
+    # --- registry/asset_sources.yaml: where every asset comes from (spec 0063 task 1, internal #210) ---
+    ("an asset whose source no row of asset_sources.yaml matches",
+     "models.yaml", "https://github.com/primer/octicons", "https://example.invalid/octicons"),
+    ("a source that quotes a licence and has no day it was read",
+     "asset_sources.yaml", "    cost: none\n    checked: 2026-10-09\n    licence_also:", "    cost: none\n    licence_also:"),
+    ("a source with neither a quoted licence nor a note saying why not",
+     "asset_sources.yaml", 'licence_note: "Drawn from primitives', 'licence_nope: "Drawn from primitives'),
+    ("a source nobody can reach by account type",
+     "asset_sources.yaml", "    account: free\n    cost: none\n    checked: 2026-10-09\n", "    account: sometimes\n    cost: none\n    checked: 2026-10-09\n"),
     # --- registry/links.yaml, links out (spec 0050 requirement 8, internal #136) --------
     ("a link out nobody says they opened",
      "links.yaml", "    url: \"https://www.nasa.gov/live/\"\n    checked: 2026-10-08\n", "    url: \"https://www.nasa.gov/live/\"\n"),
@@ -1065,8 +1077,8 @@ TOUR_CASES: list[tuple[str, str, str]] = [
      "          title: \"Two places, and only two\"\n          body: >-\n"
      "            Right now there are exactly 2 homes above your head with people inside them."),
     ("a stop that has gained its `read` comment but is still on the pending list",
-     "        target: {record: star-trappist-1}\n",
-     "        # read 2026-10-08 at the NASA exoplanet archive.\n        target: {record: star-trappist-1}\n"),
+     "        target: {layer: debris-notable, catalog: \"27386\"}\n",
+     "        # read 2026-10-09 at an ESA page.\n        target: {layer: debris-notable, catalog: \"27386\"}\n"),
     ("an eclipse card that calls the light blinding",
      "            Now it is the Earth that is in the way.",
      "            Now it is the Earth that is in the way, in a blinding light."),

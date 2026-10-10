@@ -355,6 +355,64 @@ export const SOURCES = {
     note: '27.6 kB, the newest 20 storms, measured 2026-09-28. GDACS calls its information "purely indicative".',
   },
 
+  // Three feeds the page used to read straight from their publishers (internal #525, #553). Each has a saved
+  // copy now, which load() reads first; the publisher is the fallback (`browser: true`). registry/sources.yaml
+  // says why these URLs, cadences and terms. data/eonet.js and data/sunregions.js name the same URLs.
+  'eonet-fires': {
+    id: 'eonet-fires',
+    registryId: 'eonet-fires',
+    label: 'NASA EONET — fires, last 30 days',
+    publisher: 'NASA Earth Observatory',
+    url: 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=wildfires&days=30',
+    cadenceMs: 1 * HOUR,
+    freshnessMaxMs: 12 * HOUR,
+    browser: true,
+    kind: 'json',
+    attribution: 'Fires, volcanoes and sea ice: NASA EONET',
+    note: '69 kB for both lists before they were ours, measured 2026-10-09.',
+  },
+  'eonet-volcanoes-ice': {
+    id: 'eonet-volcanoes-ice',
+    registryId: 'eonet-volcanoes-ice',
+    label: 'NASA EONET — volcanoes and sea ice',
+    publisher: 'NASA Earth Observatory',
+    url: 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=volcanoes,seaLakeIce',
+    cadenceMs: 1 * HOUR,
+    freshnessMaxMs: 12 * HOUR,
+    browser: true,
+    kind: 'json',
+    attribution: 'Fires, volcanoes and sea ice: NASA EONET',
+  },
+  'swpc-solar-regions': {
+    id: 'swpc-solar-regions',
+    registryId: 'swpc-solar-regions',
+    label: 'NOAA SWPC — sunspot groups',
+    publisher: 'NOAA Space Weather Prediction Center',
+    url: 'https://services.swpc.noaa.gov/json/solar_regions.json',
+    cadenceMs: 1 * HOUR,
+    freshnessMaxMs: 12 * HOUR,
+    browser: true,
+    kind: 'json',
+    attribution: 'Sunspot groups: NOAA SWPC',
+  },
+
+  // The wind overlay's field (scene/wind.js, data/wind.js; internal #552). Read only from our saved copy:
+  // `browser: false`, registry/sources.yaml `wind` says why. Nothing calls load() for it; the Earth data
+  // panel asks snapshotAvailable('wind') and offers the wind only when a copy exists.
+  wind: {
+    id: 'wind',
+    registryId: 'wind',
+    label: 'Wind — NOAA GFS, ten metres up',
+    publisher: 'PacIOOS (University of Hawaii)',
+    url: 'https://pae-paha.pacioos.hawaii.edu/erddap/griddap/ncep_global.html',
+    cadenceMs: 3 * HOUR,
+    freshnessMaxMs: 12 * HOUR,
+    browser: false,
+    kind: 'json',
+    attribution: 'Wind: NOAA/NCEP Global Forecast System, through PacIOOS ERDDAP (University of Hawaii)',
+    note: '168.8 kB, 37 x 72 points for one forecast hour, measured 2026-10-09.',
+  },
+
   // --- Sources a browser cannot reach -------------------------------------------------------
   // Present so the status panel can say "could not look" about them by name, which is a
   // different answer from "stale" and a very different answer from "fine". Every one of these
@@ -1209,6 +1267,14 @@ async function readSnapshot(src) {
     return { ok: false, httpStatus: null, why };
   }
 
+  // AS COLUMNS FIRST, WHEN THE MANIFEST NAMES SUCH A FILE (internal #523; scripts/columnar.py,
+  // data/columnar.js). The big catalogues repeat 17 keys in each of 16 000 rows; the column file
+  // holds the same rows in about a third of the text. It is an extra: anything wrong with it (not
+  // there, not JSON, a column that does not add up) and the verbatim file below is read exactly as
+  // before. The decoded rows are the verbatim rows, so nothing after this line can tell.
+  const viaColumns = await readColumns(src, row);
+  if (viaColumns) return viaColumns;
+
   let httpStatus = null;
   try {
     const response = await fetch(SNAPSHOT_BASE + encodeURIComponent(rid) + '.json', {
@@ -1240,6 +1306,29 @@ async function readSnapshot(src) {
     };
   } catch {
     return { ok: false, httpStatus, why: 'unreadable' };
+  }
+}
+
+/** The column twin of a saved copy, decoded to its rows; null for "read the verbatim file". */
+async function readColumns(src, row) {
+  const twin = row.columns;
+  if (src.kind !== 'json' || !twin || typeof twin.path !== 'string' || !/^[\w.-]+\.cols\.json$/.test(twin.path)) return null;
+  try {
+    const response = await fetch(SNAPSHOT_BASE + encodeURIComponent(twin.path), { credentials: 'omit' });
+    if (!response.ok) return null;
+    const file = JSON.parse(await response.text());
+    if (!file || file.schema !== SNAPSHOT_SCHEMA) return null;
+    // The twin of THIS publish, not a file an edge kept from the last one: the manifest row and
+    // the file must agree on when the publisher was read and on how many rows there are.
+    if ((file.fetched_at || null) !== (row.fetched_at || null) || file.rows !== twin.rows) return null;
+    const { decodeColumns } = await import('./columnar.js');
+    const body = decodeColumns(file);
+    const fetchedAt = Date.parse(file.fetched_at);
+    if (!Number.isFinite(fetchedAt)) return null;
+    const validUntil = Date.parse(file.valid_until || row.valid_until);
+    return { ok: true, body, fetchedAt, validUntil: Number.isFinite(validUntil) ? validUntil : null, httpStatus: response.status, why: null };
+  } catch {
+    return null;
   }
 }
 

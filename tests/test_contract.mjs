@@ -123,7 +123,7 @@ const CONTRACT = {
   'scene/stars3d.js': ['createStars3d', 'STRETCH_PX'],
   // The device tiers (2026-09-28): the tier is chosen in quality.js, the maps swapped by
   // texturetiers.js from the mirror of registry/textures.yaml.
-  'scene/quality.js': ['createFrameLatch', 'shouldSaveData', 'chooseTier', 'createTierPromoter'],
+  'scene/quality.js': ['createFrameLatch', 'shouldSaveData', 'chooseTier', 'createTierPromoter', 'createIdleGate', 'idleCapWanted', 'movingReasons'],
   // Spec 0053 task 3: the aurora shell, its JS twins (tests/test_aurora.mjs), and the OVATION decode.
   'scene/aurora.js': ['createAurora', 'auroraRightNow', 'auroraLine', 'AURORA_FRAG', 'nightMask', 'probabilityToEmission', 'auroraColour', 'profile', 'profileIntegral', 'maxDotOnArc', 'gridUv', 'reachLatDeg', 'TIER_STEPS', 'EMISSIONS', 'NIGHT'],
   'data/ovation.js': ['OVATION_URL', 'parseOvation', 'upsampleGrid', 'summarize', 'auroraMode', 'nextLookMs', 'mayLook', 'REFRESH_MS', 'START_DELAY_MS', 'HOLD_MS'],
@@ -1366,8 +1366,10 @@ for (const file of allFiles) {
     }
   }
   // ... and the two must be written from different numbers on the CPU side too.
-  const dotLine = (src.match(/^\s*attrOpacity\.array\[k\] = .*$/m) || [''])[0];
-  const ringLine = (src.match(/^\s*attrRing\.array\[k\] = .*$/m) || [''])[0];
+  // (Since internal #519 a value is written only when it differs from the one in the array, so
+  // the two lines are a comparison and a write: tests/test_glyph_uploads.mjs holds the uploads.)
+  const dotLine = /^\s*if \(aOpacity\[k\] !== opacity\) \{ aOpacity\[k\] = opacity; /m.test(src) ? (src.match(/^\s*const opacity = .*$/m) || [''])[0] : '';
+  const ringLine = (src.match(/^\s*if \(aRing\[k\] !== own\) \{ aRing\[k\] = own; .*$/m) || [''])[0];
   if (!/dotOpacity\(/.test(dotLine)) problems.push(`HALO     the dot is not written through onemark's dotOpacity(): "${dotLine.trim()}"`);
   if (!ringLine) problems.push('HALO     nothing writes iRing, so the halo has no opacity of its own');
   else if (/dotOpacity\(|yieldTo|modelOpacity/.test(ringLine)) {
@@ -2946,6 +2948,23 @@ for (const file of allFiles) {
   } catch (e) {
     problems.push(`OGIMAGE  could not check the trip pictures: ${String(e)}`);
   }
+}
+
+// --- spec 0053 task 4 (internal #146): a streak layer is lines on the Earth's frame, never a screen-covering pass --
+// The wind is a few thousand short lines that turn with the Earth. A wind drawn as one full-screen quad
+// (a fragment shader over the whole frame) costs every pixel of every device, so the particle layers refuse it.
+{
+  const QUAD = [/PlaneGeometry\s*\(\s*2\s*,\s*2/, /OrthographicCamera/, /FullScreenQuad/, /gl_Position\s*=\s*vec4\(\s*position\.xy/, /WebGLRenderTarget/];
+  const quadWords = (src) => QUAD.filter((re) => re.test(src)).map((re) => re.source);
+  // watched to fail on a scratch full-screen quad (the acceptance of the task)
+  const scratch = 'const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({ vertexShader: "void main(){ gl_Position = vec4( position.xy, 0.0, 1.0 ); }" }));';
+  if (quadWords(scratch).length < 2) problems.push('QUAD     the full-screen-quad check does not catch a scratch quad: it is not watching');
+  for (const f of ['wind.js']) {
+    const src = readFileSync(join(JS, 'scene', f), 'utf8');
+    const hit = quadWords(src);
+    if (hit.length) problems.push(`QUAD     scene/${f} draws a screen-covering pass (${hit.join(', ')}): a streak layer is LineSegments on the Earth's frame (internal #146)`);
+  }
+  notes.push('quad: scene/wind.js is lines, not a full-screen pass (and the check fails on a scratch quad)');
 }
 
 // --- spec 0034: what stays forbidden, and the cinematic numbers ------------------------------

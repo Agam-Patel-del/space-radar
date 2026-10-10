@@ -13,7 +13,9 @@
 // NO TELESCOPE HAS RESOLVED THE SURFACE OF ANY EXOPLANET. Everything this file draws is an
 // illustration, and the label is part of the object: createFace() carries an on-canvas tag that
 // says "Artist's impression", and faceLabel() gives the card its line, generated from the row:
-// "Measured: 1.7 Earth radii, a 25-day year. The surface is imagined." No moons are invented and no
+// "Measured: 1.7 Earth radii, a 25-day year. The surface is imagined." (an estimated radius is
+// "Estimated: 1.0 Earth radii. Measured: an 11-day year.", a minimum mass "At least 1.1 Earth
+// masses. Measured: an 11-day year."; internal #538). No moons are invented and no
 // rings are drawn (none is reported for any planet in the table).
 //
 // WHAT IS MEASURED, WHAT IS WORKED OUT, WHAT IS IMAGINED.
@@ -142,6 +144,11 @@ export function rowOf(planet, star) {
     massEarths: planet.massEarths,
     periodDays: planet.periodDays,
     aAu: planet.aAu,
+    // How the table knows each number (measured / estimated / least): the label says "Measured"
+    // only of a measured one (internal #538). `method` is read when there is no `*From`.
+    method: planet.method,
+    radiusFrom: planet.radiusFrom,
+    massFrom: planet.massFrom,
     starTeffK: star ? star.teffK : null,
     starRadiusSuns: star ? star.radiusSuns : null,
     starMassSuns: star ? star.massSuns : null,
@@ -165,16 +172,29 @@ export function faceFor(row) {
   const seed = seedOf(r.seedName || name);
   let massEarths = num(r.massEarths);
   let measuredRadius = num(r.radiusEarths);
+  // WHEN THE ROW SAYS HOW EACH NUMBER IS KNOWN (`radiusFrom`, `massFrom`, as the generated systems
+  // table carries them) THE ROW DECIDES, and the guess below is not made. An estimated radius is
+  // kept apart (`radiusGuess`) so it can be drawn and said as "Estimated"; an estimated mass is a
+  // forecast from the radius and is dropped; a least mass (`massFrom: least`) is a measured
+  // minimum and is said as "at least".
+  const known = r.radiusFrom !== undefined || r.massFrom !== undefined;
+  let radiusGuess = null;
+  let massKind = massEarths ? 'measured' : null;
+  if (known) {
+    if (r.radiusFrom !== undefined && r.radiusFrom !== 'measured') { radiusGuess = measuredRadius; measuredRadius = null; }
+    if (r.massFrom === 'estimated') { massEarths = null; massKind = null; }
+    else if (r.massFrom === 'least' && massEarths) massKind = 'least';
+  }
   // THE ARCHIVE'S COMPOSITE TABLE FILLS A MISSING MASS OR RADIUS FROM THE OTHER (Chen and Kipping's
   // relation) and the slimmed table carries no flag for it. A pair that sits on that relation to
   // 3 % is one number and its forecast: the forecast is dropped, so it is neither printed as
   // measured nor allowed to decide the class. Found by radial velocity, the mass is the measured
   // one; otherwise the radius is.
-  if (massEarths && measuredRadius && Math.abs(radiusFromMass(massEarths) / measuredRadius - 1) < 0.03) {
+  if (!known && massEarths && measuredRadius && Math.abs(radiusFromMass(massEarths) / measuredRadius - 1) < 0.03) {
     if (/radial velocity/i.test(String(r.method || ''))) measuredRadius = null;
     else massEarths = null;
   }
-  const radiusEarths = measuredRadius || (massEarths ? radiusFromMass(massEarths) : 1);
+  const radiusEarths = measuredRadius || (massEarths ? radiusFromMass(massEarths) : radiusGuess || 1);
   const periodDays = num(r.periodDays);
   const teffK = num(r.starTeffK) || SUN_TEFF_K;
   const starRadiusSuns = num(r.starRadiusSuns) || 1;
@@ -225,7 +245,8 @@ export function faceFor(row) {
     teqK, substellarK, fluxEarths, warmth, albedo: ALBEDO,
     density, packing,
     estimated: { radius: !measuredRadius, orbit: !measuredA },
-    measured: { radiusEarths: measuredRadius, massEarths, periodDays },
+    measured: { radiusEarths: measuredRadius, massEarths, massKind, periodDays },
+    radiusGuess,
     radiusEarths, aAu,
     star: { teffK, radiusSuns: starRadiusSuns, rgb, light },
     imagined: false,
@@ -502,12 +523,20 @@ function yearWords(periodDays) {
 export function faceLabel(face) {
   const E = COPY.exoface;
   if (face.imagined) return { tag: E.tag, measured: E.nothingMeasured, imagined: E.whole, line: [E.tag + COPY.punctuation.dot, E.nothingMeasured, E.whole].join(' ') };
-  const parts = [];
+  // Only a measured number is printed after "Measured". A measured minimum mass is "At least N
+  // Earth masses"; a number the Archive only estimated is "Estimated: ...". The year is measured
+  // either way, so it keeps its own "Measured" sentence (internal #538).
   const m = face.measured;
-  if (m.radiusEarths) parts.push(t(E.radius, { n: twoFigures(m.radiusEarths) }));
-  else if (m.massEarths) parts.push(t(E.mass, { n: twoFigures(m.massEarths) }));
-  if (m.periodDays) parts.push(yearWords(m.periodDays));
-  const measured = parts.length ? t(E.measured, { parts: parts.join(E.join) }) : E.nothingMeasured;
+  const year = m.periodDays ? yearWords(m.periodDays) : null;
+  let lead = null;
+  if (m.radiusEarths) lead = { measured: true, text: t(E.radius, { n: twoFigures(m.radiusEarths) }) };
+  else if (m.massEarths && m.massKind !== 'least') lead = { measured: true, text: t(E.mass, { n: twoFigures(m.massEarths) }) };
+  else if (m.massEarths) lead = { text: t(E.least, { n: twoFigures(m.massEarths) }) };
+  else if (face.radiusGuess) lead = { text: t(E.estimated, { parts: t(E.radius, { n: twoFigures(face.radiusGuess) }) }) };
+  let measured;
+  if (lead && lead.measured) measured = t(E.measured, { parts: [lead.text, year].filter(Boolean).join(E.join) });
+  else if (lead) measured = year ? [lead.text, t(E.measured, { parts: year })].join(' ') : lead.text;
+  else measured = year ? t(E.measured, { parts: year }) : E.nothingMeasured;
   const imagined = face.kind === 'giant' ? E.clouds : E.surface;
   return { tag: E.tag, measured, imagined, line: [E.tag + COPY.punctuation.dot, measured, imagined].join(' ') };
 }
@@ -629,6 +658,7 @@ uniform vec3 uIceCol;
 uniform vec3 uCloudCol;
 uniform vec4 uCyc[ 5 ];
 uniform mat3 uCloudFrame2; // the high deck's own frame: it drifts at another speed
+uniform vec3 uHighStretch; // the thin deck's noise scale by axis
 uniform float uHigh;       // the share of the sky under the thin high deck (tier 2); 0 = none
 uniform float uFrost;      // 0..1: a snowball's cracks, blue ice and scoured rock (tiers 1 and 2); 0 = none
 ${NOISE_GLSL}
@@ -716,9 +746,13 @@ float cloudShade( vec3 c, float extra ) {
 
 #if TIER >= 2
 // A thin high deck over the thick low one: drawn out along the parallels into wisps, and seen
-// through its own height, so against the limb it slides over the low deck.
+// through its own height, so against the limb it slides over the low deck. A locked world has no
+// parallels (its cloud frame's y is only a line across the terminator), so there the deck is not
+// drawn out at all and is wound round the storm under the star, as the low deck is: stretched
+// along that y it crossed the disc as straight streaks (seen 2026-10-09, two reels).
 float highDeck( vec3 c ) {
-  vec3 w = vec3( c.x * 2.6, c.y * 8.5, c.z * 2.6 ) + uSeed.yxz * 1.7;
+  if ( uLocked > 0.5 ) { float storm; c = wind( c, storm ); }
+  vec3 w = c * uHighStretch + uSeed.yxz * 1.7;
   float n = fbm3( w ) + 0.22 * ( fbm3( w * 3.1 + 4.0 ) - 0.5 );
   return smoothstep( 0.62 - 0.3 * uHigh, 0.86, n );
 }
@@ -1093,7 +1127,7 @@ export function faceUniforms(face) {
       uOceanDeep: { value: v3(k.oceanDeep) }, uOceanShallow: { value: v3(k.oceanShallow) },
       uLandLow: { value: v3(k.landLow) }, uLandDry: { value: v3(k.landDry) }, uLandHigh: { value: v3(k.landHigh) },
       uIceCol: { value: v3(k.iceCol) }, uCloudCol: { value: v3(k.cloudCol) }, uCyc: { value: k.cyclones.map(v4) },
-      uCloudFrame2: { value: new THREE.Matrix3() }, uHigh: { value: k.high || 0 }, uFrost: { value: k.frost || 0 },
+      uCloudFrame2: { value: new THREE.Matrix3() }, uHigh: { value: k.high || 0 }, uHighStretch: { value: v3(highDeckStretch(k.locked)) }, uFrost: { value: k.frost || 0 },
     });
   }
   return u;
@@ -1180,6 +1214,15 @@ export const SPIN_SECONDS = 360;
 export const CLOUD_DRIFT_SECONDS = 1500;
 /** The thin high deck drifts faster than the thick low one, which is what lets the two part at the limb. */
 export const HIGH_DRIFT_SECONDS = 900;
+
+/**
+ * The thin high deck's noise scale along its frame's x, y, z. A turning world's y is its pole, so a
+ * finer y draws the deck out along the parallels. A locked world's y is no pole, and a deck drawn
+ * out along it lies in straight streaks down the disc: there the scale is the same every way.
+ */
+export function highDeckStretch(locked) {
+  return locked ? [3.4, 3.4, 3.4] : [2.6, 8.5, 2.6];
+}
 
 function setFrame(m3, ex, ey, ez) {
   m3.set(ex.x, ex.y, ex.z, ey.x, ey.y, ey.z, ez.x, ez.y, ez.z);

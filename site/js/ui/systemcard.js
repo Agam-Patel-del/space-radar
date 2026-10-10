@@ -52,6 +52,16 @@ export function planetFacts(system, planet, albedo = 0.3) {
   return { radius, mass, rows };
 }
 
+/**
+ * The one row every drawn system's star has, a hand-listed one (TRAPPIST-1) as much as a generated one: the
+ * glow is drawn wider than the star at whole-system scale in both (scene/systems.js glowScale), and the card
+ * says so. Seen missing on TRAPPIST-1's card, 2026-10-10 (internal #565).
+ */
+export function glowRows() {
+  const C = COPY.starSystem;
+  return [[C.rows.starGlow, C.starGlowValue]];
+}
+
 export function starRows(system) {
   const C = COPY.starSystem;
   const R = C.rows;
@@ -59,17 +69,35 @@ export function starRows(system) {
   const rows = [];
   rows.push([R.starTemperature, Number.isFinite(s.teffK) ? t(C.kelvin, { n: fmt.int(s.teffK) }) : C.starWhite]);
   rows.push([R.starWidth, Number.isFinite(s.radiusSuns) ? t(COPY.card.values.suns, { n: fmt.smart(s.radiusSuns) }) : C.starPoint]);
+  rows.push([R.starGlow, C.starGlowValue]);
   rows.push([R.starMass, Number.isFinite(s.massSuns) ? t(COPY.card.values.suns, { n: fmt.smart(s.massSuns) }) : C.notMeasured]);
   rows.push([R.planets, fmt.int(system.planets.length)]);
-  if (system.starsInSystem > 1) rows.push([R.stars, t(C.starsOne, { n: fmt.int(system.starsInSystem) })]);
-  rows.push([R.zone, system.zone ? t(C.zoneRange, { a: fmt.smart(system.zone.innerAu), b: fmt.smart(system.zone.outerAu) }) : C.zoneNone[system.zoneMissing] || C.notMeasured]);
+  const pair = system.binary || null;
+  if (pair) {
+    const c = pair.companion;
+    rows.push([R.stars, C.starsBoth]);
+    rows.push([R.companion, t(C.companionValue, {
+      width: t(COPY.card.values.suns, { n: fmt.smart(c.radiusSuns) }),
+      mass: t(COPY.card.values.suns, { n: fmt.smart(c.massSuns) }),
+      k: fmt.int(c.teffK),
+      derived: c.teffFrom === 'derived' ? C.companionDerived : '',
+    })]);
+  } else if (system.starsInSystem > 1) rows.push([R.stars, t(C.starsOne, { n: fmt.int(system.starsInSystem) })]);
+  if (pair && system.zone) rows.push([R.zone, t(C.zoneBoth, { a: fmt.smart(system.zone.innerAu), b: fmt.smart(system.zone.outerAu) })]);
+  else rows.push([R.zone, system.zone ? t(C.zoneRange, { a: fmt.smart(system.zone.innerAu), b: fmt.smart(system.zone.outerAu) }) : C.zoneNone[system.zoneMissing] || C.notMeasured]);
   return rows;
 }
 
 export function generatedLine(system) {
   const C = COPY.starSystem;
   const computed = system.planets.filter((p) => p.aFrom === 'kepler').length;
-  return t(C.line, {
+  const pair = system.binary ? ` ${t(C.pairLine, { days: fmt.smart(system.binary.orbit.periodDays), a: fmt.smart(system.binary.orbit.aAu) })}` : '';
+  return pair ? t(C.line, {
+    date: system.asOf,
+    computed: computed ? t(C.lineComputed, { n: fmt.int(computed) }) : '',
+    phase: system.planets.some((p) => !phaseIsMeasured(p)) ? COPY.trip.systemPhaseUnknown : '',
+    defaults: system.planets.some((p) => !p.radiusFrom) ? C.lineDefaults : '',
+  }) + pair : t(C.line, {
     date: system.asOf,
     computed: computed ? t(C.lineComputed, { n: fmt.int(computed) }) : '',
     phase: system.planets.some((p) => !phaseIsMeasured(p)) ? COPY.trip.systemPhaseUnknown : '',

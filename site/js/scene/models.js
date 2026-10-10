@@ -3309,22 +3309,57 @@ function raggedGeometry(r, n, seed, y) {
   return geo;
 }
 /**
- * One step of a patch's soft edge (public #267: "a hard edge"): the same ragged outline a little
- * wider, in the patch's own toon colour at a fraction of its opacity, under it. Two or three of
- * these step the edge down into the map instead of cutting it. Alpha needs its own material; it
- * lives in the model's pool, so it is let go with the rest.
+ * A patch of ground whose edge FADES (public #267: "a hard edge"; internal #478: three stepped
+ * plates with outlines). One fan of rings round the centre, each ring ragged by the same seeded
+ * noise as the outline, and an alpha on every vertex (a vec4 colour, so the toon material needs no
+ * new shader term): `profile` lists [radius as a fraction of the ragged rim, opacity] from the
+ * centre outward, and the GPU interpolates between rings, so the edge goes down smoothly into the
+ * map instead of stepping. Nothing writes depth. Illustrative, like the patch it softens.
  */
-function featherRing(r, n, seed, y, colour, opacity, name) {
+export const SOFT_PROFILE = [[0, 1], [0.55, 1], [0.8, 0.86], [1, 0.55], [1.2, 0.2], [1.4, 0]];
+export function softPatchGeometry(r, n, seed, y, profile = SOFT_PROFILE) {
+  const rim = (i) => r * (0.74 + 0.26 * hash01(seed + (i % n) * 31));
+  const pos = [];
+  const col = [];
+  const put = (x, z, a) => { pos.push(x, y, z); col.push(1, 1, 1, a); };
+  const ringCount = profile.length - 1; // profile[0] is the centre
+  put(0, 0, profile[0][1]);
+  for (let k = 1; k <= ringCount; k++) {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const rr = rim(i) * profile[k][0];
+      put(Math.cos(a) * rr, Math.sin(a) * rr, profile[k][1]);
+    }
+  }
+  const at = (k, i) => 1 + (k - 1) * n + (i % n);
+  const idx = [];
+  for (let i = 0; i < n; i++) idx.push(0, at(1, i + 1), at(1, i));
+  for (let k = 1; k < ringCount; k++) {
+    for (let i = 0; i < n; i++) {
+      idx.push(at(k, i), at(k, i + 1), at(k + 1, i));
+      idx.push(at(k, i + 1), at(k + 1, i + 1), at(k + 1, i));
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  geo.setIndex(idx);
+  // Straight up for every vertex: the ground is flat, and a computed normal would depend on winding.
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(pos.length / 3).fill(0).flatMap(() => [0, 1, 0]), 3));
+  return geo;
+}
+function softPatch(r, n, seed, y, colour, profile, layer, name) {
   const pool = modelMaterials || materials;
-  const mat = toonMaterial(colour, `feather-${opacity.toFixed(2)}`, pool);
+  const mat = toonMaterial(colour, 'ground-soft', pool);
+  mat.vertexColors = true;
   mat.transparent = true;
-  mat.opacity = opacity;
   mat.depthWrite = false;
-  const m = new THREE.Mesh(raggedGeometry(r, n, seed, y), mat);
+  const m = new THREE.Mesh(softPatchGeometry(r, n, seed, y, profile), mat);
   m.name = name;
   m.castShadow = false;
   m.receiveShadow = false;
   m.renderOrder = -1;
+  m.userData.layer = layer; // heroes.js addGroundPatch keeps this order when it sets the group's
   return m;
 }
 function regolith(r, colour, seg, soft = false) {
@@ -3333,14 +3368,15 @@ function regolith(r, colour, seg, soft = false) {
   const g = new THREE.Group();
   g.name = 'ground';
   const n = Math.max(14, seg || 18);
-  // The soft edge: two wider, fainter outlines of the same ground, under it.
-  // Only where asked (the lander's footing): the oddities' discs are held to tight triangle budgets.
+  // The soft edge (a fan with an alpha falloff, no stepped plates). Only where asked (the lander's
+  // footing): the oddities' discs are held to tight triangle budgets and keep the hard outline.
   if (soft) {
-    g.add(featherRing(r * 1.32, n, 17, 0.0008, col, 0.16, 'ground-feather-2'));
-    g.add(featherRing(r * 1.14, n, 13, 0.0014, col, 0.34, 'ground-feather-1'));
+    g.add(softPatch(r, n, 11, 0.002, col, SOFT_PROFILE, 0, 'ground'));
+    g.add(softPatch(r * 0.62, Math.max(9, n >> 1), 53, 0.0035, dark, [[0, 0.9], [0.5, 0.8], [0.85, 0.35], [1.1, 0]], 1, 'ground-scuffed'));
+  } else {
+    g.add(ragged(r, n, 11, 0.002, col, 'ground'));
+    g.add(ragged(r * 0.56, Math.max(9, n >> 1), 53, 0.0035, dark, 'ground-scuffed'));
   }
-  g.add(ragged(r, n, 11, 0.002, col, 'ground'));
-  g.add(ragged(r * 0.56, Math.max(9, n >> 1), 53, 0.0035, dark, 'ground-scuffed'));
   const pos = [];
   const nor = [];
   for (let i = 0; i < 6; i++) {
@@ -3463,7 +3499,7 @@ function buildWrappedPhoto() {
   glint.position.set(-0.13, 0.03, -0.07);
   g.add(glint);
 
-  g.add(regolith(0.45, null, 12));
+  g.add(regolith(0.45, null, 12, true));
   return g;
 }
 
@@ -3536,7 +3572,7 @@ function buildDiscStack() {
   t.scale.setScalar(0.85);
   g.add(t);
 
-  g.add(regolith(0.48));
+  g.add(regolith(0.48, null, 14, true));
   return g;
 }
 
@@ -3591,7 +3627,7 @@ function buildGolfBalls() {
 
   // A SMALL disc: selected in the browser at 260 px, a 0.5 ground read as a grey blob with two
   // dots on it. The dust is context for the objects, not the object.
-  g.add(regolith(0.38));
+  g.add(regolith(0.38, null, 12, true));
   return g;
 }
 
@@ -4343,11 +4379,38 @@ export function updateModelAttitude(obj, record, sunDirScene, nadirScene, tMs) {
 
   // comet tails: already anti-sunward from the basis above; scale with heliocentric distance
   if (obj.userData.tails) {
-    const au = Number(meta.rAu);
+    // `userData.sunAu` and `userData.selected` are written each frame by heroes.js, as `burn` is. Until the
+    // integration pass of 2026-10-10 NOTHING wrote `meta.rAu` or `meta.selected`, so the distance was never
+    // known and every comet drew its tail wherever it was: 2I/Borisov at 48.8 au was seen with one.
+    const au = cometSunAu(obj.userData, meta);
     const len = Number.isFinite(au) ? Math.min(2.5, Math.max(0.35, 1 / (au * au))) : 1;
     obj.userData.tails.scale.set(len, 1, 1);
-    obj.userData.tails.visible = !Number.isFinite(au) || au < 1.5 || !!meta.selected;
+    obj.userData.tails.visible = cometTailVisible(au, obj.userData.selected !== undefined ? !!obj.userData.selected : !!meta.selected);
   }
+}
+
+/**
+ * Whether a comet is drawn with its tail. A tail is ice turning to gas in the Sun's heat, so far from the Sun there is
+ * none: the tail is drawn inside 1.5 au (as it always was), and a SELECTED comet keeps it a little further, out to
+ * COMET_TAIL_SELECTED_AU, so the one you are looking at is not a bare dot at the moment it is closest to being a comet.
+ * Past that a selected comet drew a tail at any distance (internal #413, #548: one at 30 au had one). The distances are
+ * ours and illustrative; the tail itself is, as the card says. A comet with no known distance keeps its tail. Pure.
+ */
+export const COMET_TAIL_SELECTED_AU = 3;
+/** A comet's distance from the Sun in au: the frame's own (heroes.js writes `sunAu` on the object), else the record's, else NaN. Pure. */
+export function cometSunAu(userData, meta) {
+  const live = userData ? userData.sunAu : undefined;
+  if (Number.isFinite(live)) return live;
+  return Number(meta && meta.rAu);
+}
+/** The distance from the Sun of a propagated position, in au, when its frame is the Sun's; NaN otherwise. Pure. */
+export function sunAuOf(p) {
+  if (!p || p.frame !== 'sun-inertial' || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return NaN;
+  return Math.hypot(p.x, p.y, p.z) / 149597870.7;
+}
+export function cometTailVisible(au, selected) {
+  if (!Number.isFinite(au)) return true;
+  return au < 1.5 || (!!selected && au < COMET_TAIL_SELECTED_AU);
 }
 
 /** Free every geometry and the shared materials. For a page teardown or a test. */

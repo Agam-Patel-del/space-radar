@@ -514,7 +514,7 @@ export function addGroundPatch(obj, record, reach = 0.5) {
   if (!obj || !record || !record.meta || record.meta.world !== 'moon' || obj.getObjectByName(GROUND_NAME)) return null;
   const patch = M.modelFor('site', 'ground-moon');
   patch.name = GROUND_NAME;
-  patch.traverse((n) => { n.userData.noReach = true; n.renderOrder = -2; });
+  patch.traverse((n) => { n.userData.noReach = true; n.renderOrder = -3 + (n.userData.layer || 0); });
   patch.scale.setScalar(Math.max(0.3, reach) * 1.9); // just past the footpads
   patch.position.y = SHADOW_LIFT * 0.3;
   obj.add(patch);
@@ -904,6 +904,9 @@ export function createHeroes(scene, ctx) {
       // the origin for anything on or around the stage's own, the drawn disc for a site on
       // another (nadirOf).
       nadirOf(c.record, c.pos, drawnCentre, _v);
+      // A comet's tail goes by its distance from the Sun and by whether it is the selected one
+      // (models.js cometTailVisible): per-frame state on the object, as `burn` is.
+      if (obj.userData.tails) { obj.userData.sunAu = M.sunAuOf(c.p); obj.userData.selected = c.record.id === selectedId; }
       M.updateModelAttitude(obj, c.record, sun, _v, tMs);
 
       // The contact shadow leans away from the Sun, in the model's own frame (groundShadowPose).

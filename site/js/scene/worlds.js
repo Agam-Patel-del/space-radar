@@ -912,7 +912,10 @@ uniform float uRingOpacity;
 uniform float uWrap;        // Venus: daylight carried past the terminator by a deep cloud deck; 0 elsewhere
 uniform float uContrast;    // Saturn: the map's departure from its own mean, multiplied; 1 elsewhere
 uniform vec3  uMapMean;     // that mean, in linear light
-uniform sampler2D uRelief;  // Mercury: local relief, 0.5 = level ground (registry/textures.yaml mercury-relief)
+// Named uGlobeRelief, not uRelief: scene/tiles.js builds its shader from this one and declares its
+// own "uniform vec2 uRelief"; two declarations of one name do not compile, and from 2026-10-08 to
+// 2026-10-10 no close-up tile of the Moon or Mars was drawn because of it.
+uniform sampler2D uGlobeRelief;  // Mercury: local relief, 0.5 = level ground (registry/textures.yaml mercury-relief)
 uniform vec3  uReliefK;     // slope per unit of difference between two texels either side; the texel's u; its v
 varying vec2 vUv;
 varying vec3 vNormalW;
@@ -959,8 +962,8 @@ void main() {
   // differences, tips the normal the light is worked out with. The silhouette is still the ball's.
   float dGeo = dot( n, uSunDir );
   if ( uReliefK.x > 0.0 ) {
-    float hE = texture2D( uRelief, vUv + vec2( uReliefK.y, 0.0 ) ).r - texture2D( uRelief, vUv - vec2( uReliefK.y, 0.0 ) ).r;
-    float hN = texture2D( uRelief, vUv + vec2( 0.0, uReliefK.z ) ).r - texture2D( uRelief, vUv - vec2( 0.0, uReliefK.z ) ).r;
+    float hE = texture2D( uGlobeRelief, vUv + vec2( uReliefK.y, 0.0 ) ).r - texture2D( uGlobeRelief, vUv - vec2( uReliefK.y, 0.0 ) ).r;
+    float hN = texture2D( uGlobeRelief, vUv + vec2( 0.0, uReliefK.z ) ).r - texture2D( uGlobeRelief, vUv - vec2( 0.0, uReliefK.z ) ).r;
     vec3 east = normalize( vEastW - n * dot( vEastW, n ) );
     vec3 north = cross( n, east );
     // A degree of longitude is shorter by the cosine of the latitude; held off the pole, where it is 0.
@@ -1059,7 +1062,7 @@ export function worldMaterial(map, tint) {
       uWrap: { value: 0 },
       uContrast: { value: 1 },
       uMapMean: { value: new THREE.Vector3(0.5, 0.5, 0.5) },
-      uRelief: { value: null },
+      uGlobeRelief: { value: null },
       uReliefK: { value: new THREE.Vector3(0, 0, 0) },
     },
   });
@@ -1076,6 +1079,24 @@ export function oblateRadii(f) {
   const eq = Math.pow(1 - k, -1 / 3);
   return { eq, pol: eq * (1 - k) };
 }
+
+/**
+ * How finely a world's sphere is cut. A facet's middle sags under the true surface by R (1 - cos(half a step)):
+ * 2.1 km on the Moon at 64 segments, which is the height a ground site's lander (placed on the true radius)
+ * floated above the drawn ground, and the shell the stars showed under (public #406, internal #565). The two
+ * worlds that carry ground sites (registry/sites.yaml: the Moon and Mars) are cut finely enough that the sag is
+ * under a quarter of a kilometre; the camera cannot go nearer than ~35 km, so nothing shows it. Pure.
+ */
+export const SITE_BODIES = new Set(['moon', 'mars']);
+export function segmentsFor(id) { return SITE_BODIES.has(id) ? { width: 192, height: 96 } : { width: 64, height: 48 }; }
+/**
+ * The fine cut is worn from this disc size up (a share of HALF the view's height, as discShare gives it): 0.05
+ * is a disc 45 px across in a view 900 px tall, where 64 segments are a third of a pixel from round. Pure.
+ */
+export const FINE_CUT_AT = 0.05;
+export function fineCutWanted(share) { return Number.isFinite(share) && share >= FINE_CUT_AT; }
+/** The deepest a facet sags under the sphere, km: the middle of a longitude step on the equator. Pure. */
+export function sagKm(radiusKm, widthSegments) { return radiusKm * (1 - Math.cos(Math.PI / widthSegments)); }
 
 /**
  * A unit sphere pressed into that spheroid, +Y the pole: SphereGeometry's vertices, faces and
@@ -1426,7 +1447,7 @@ export function createWorlds(scene, opts = {}) {
       tex.needsUpdate = true;
       faceTex.set(key, tex);
       const u = mesh.material.uniforms;
-      u.uRelief.value = tex;
+      u.uGlobeRelief.value = tex;
       u.uReliefK.value.set(...reliefUniform(r.px, r.rangeM, w.radiusKm, r.steep));
     });
     return true;
@@ -1440,7 +1461,7 @@ export function createWorlds(scene, opts = {}) {
       const mesh = meshes.get(w.id);
       const key = `${w.id}/relief`;
       const tex = faceTex.get(key);
-      if (mesh && mesh.material.uniforms.uReliefK) { mesh.material.uniforms.uReliefK.value.set(0, 0, 0); mesh.material.uniforms.uRelief.value = null; }
+      if (mesh && mesh.material.uniforms.uReliefK) { mesh.material.uniforms.uReliefK.value.set(0, 0, 0); mesh.material.uniforms.uGlobeRelief.value = null; }
       if (tex && tex.dispose) tex.dispose();
       faceTex.delete(key);
     }
@@ -1498,13 +1519,19 @@ export function createWorlds(scene, opts = {}) {
         clouds: texture(w.look.clouds),
       })
       : new THREE.Mesh(
-        w.look.oblate ? oblateGeometry(w.look.oblate, 64, 48) : new THREE.SphereGeometry(1, 64, 48),
+        w.look.oblate ? oblateGeometry(w.look.oblate, segmentsFor(w.id).width, segmentsFor(w.id).height) : new THREE.SphereGeometry(1, segmentsFor(w.id).width, segmentsFor(w.id).height),
         // The Sun is not lit by anything, so it does not get the world material: a flat disc of
         // its own texture, out of the tone mapper's way so it stays white rather than grey.
         w.look.emissive
           ? new THREE.MeshBasicMaterial({ map, color: tint, toneMapped: false, fog: false })
           : worldMaterial(map, tint),
       );
+    // The fine cut is for the camera near the ground; from anywhere else the world is drawn with the 64 x 48
+    // sphere it always had (update() swaps them by the disc's size on screen, fineCutWanted).
+    if (!w.look.earth && SITE_BODIES.has(w.id)) {
+      mesh.userData.cut = { fine: mesh.geometry, coarse: w.look.oblate ? oblateGeometry(w.look.oblate, 64, 48) : new THREE.SphereGeometry(1, 64, 48) };
+      mesh.geometry = mesh.userData.cut.coarse;
+    }
     if (!w.look.earth && w.look.map) {
       const material = mesh.material;
       const job = {
@@ -1923,6 +1950,17 @@ export function createWorlds(scene, opts = {}) {
         if (!(dist > 0) || mesh.scale.x / dist / tanHalfFov >= TEXTURE_AT_HALF_VIEW) fetchShape(w.id);
       }
     }
+    // 5b. The two finely cut worlds (the Moon and Mars, for their ground sites) wear the fine sphere only when
+    //     they are a disc on screen. Found by CI's trips walk on 2026-10-10: 61 000 triangles a frame for two
+    //     dots, at every stop of every trip, and nine star-stage stops over triangles_per_stop.
+    for (const id of SITE_BODIES) {
+      const mesh = meshes.get(id);
+      const cut = mesh && mesh.userData.cut;
+      if (!cut) continue;
+      const g = fineCutWanted(discShare(id)) ? cut.fine : cut.coarse;
+      if (mesh.geometry !== g) mesh.geometry = g;
+    }
+
     // 6. Past the count this device may hold, the world that has been a dot the longest gives its
     //    map back (MAPS_HELD).
     trimMaps();
@@ -1954,7 +1992,7 @@ export function createWorlds(scene, opts = {}) {
     bootMap.delete(id);
     current.delete(id);
     if (tex.dispose) tex.dispose();
-    if (m.uniforms && m.uniforms.uReliefK) { m.uniforms.uReliefK.value.set(0, 0, 0); m.uniforms.uRelief.value = null; }
+    if (m.uniforms && m.uniforms.uReliefK) { m.uniforms.uReliefK.value.set(0, 0, 0); m.uniforms.uGlobeRelief.value = null; }
     for (const [key, face] of faceTex) {
       if (!key.startsWith(`${id}/`)) continue;
       if (face && face.dispose) face.dispose();
@@ -2285,6 +2323,7 @@ export function createWorlds(scene, opts = {}) {
   function dispose() {
     if (stage.viewAdjust === viewAdjust) stage.setViewAdjust(null);
     for (const mesh of meshes.values()) {
+      if (mesh.userData.cut) { mesh.userData.cut.fine.dispose(); mesh.userData.cut.coarse.dispose(); }
       mesh.traverse((o) => {
         if (o.geometry) o.geometry.dispose();
         if (o.material) {
@@ -2616,15 +2655,26 @@ export function orbitPole(rel0, rel1, north) {
 const _poleNorth = new THREE.Vector3();
 /** A moon's orbit pole at this time, cached for six hours (a pole turns over years), or null. */
 function orbitPoleOf(w, mesh, tMs, parentMesh) {
-  const key = Math.floor(tMs / 2.16e7);
+  // IN THE STAGE'S AXES. The two positions come in their own frame (sun-inertial, the ecliptic's
+  // axes) and the remap in orbitPole() is the stage's: on a stage whose frame is the Earth's (the
+  // equator's axes) the normal came out turned by the obliquity. Measured 2026-10-09 in a browser
+  // frame and in node: Iapetus's axis 15.6 degrees off its own orbit's normal on the Earth's
+  // stage, 0.0 on Saturn's. So the two vectors are turned into the stage's frame first, as
+  // applyIauOrientation turns a body's axes, and the cache is per frame.
+  const to = stageFrame(stage);
+  const key = `${Math.floor(tMs / 2.16e7)}|${to}`;
   const c = mesh.userData.orbitPole;
   if (c && c.key === key) return c.v;
   let v = null;
   const a0 = positionOf(w.id, tMs), b0 = positionOf(w.parent, tMs);
   const a1 = positionOf(w.id, tMs + 864e5), b1 = positionOf(w.parent, tMs + 864e5);
   if (a0 && b0 && a1 && b1 && a0.frame === b0.frame && a1.frame === b1.frame && parentMesh) {
-    _poleNorth.set(0, 1, 0).applyQuaternion(parentMesh.quaternion);
-    v = orbitPole({ x: a0.x - b0.x, y: a0.y - b0.y, z: a0.z - b0.z }, { x: a1.x - b1.x, y: a1.y - b1.y, z: a1.z - b1.z }, _poleNorth);
+    const r0 = rotateDir({ x: a0.x - b0.x, y: a0.y - b0.y, z: a0.z - b0.z }, a0.frame, to, tMs);
+    const r1 = rotateDir({ x: a1.x - b1.x, y: a1.y - b1.y, z: a1.z - b1.z }, a1.frame, to, tMs);
+    if (r0 && r1) {
+      _poleNorth.set(0, 1, 0).applyQuaternion(parentMesh.quaternion);
+      v = orbitPole(r0, r1, _poleNorth);
+    }
   }
   mesh.userData.orbitPole = { key, v };
   return v;

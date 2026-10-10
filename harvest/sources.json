@@ -189,7 +189,8 @@
       "parser": "esa_neocc",
       "outputs": [
         "close-approaches-esa.json"
-      ]
+      ],
+      "enabled": false
     },
     {
       "id": "horizons-deep-space",
@@ -208,6 +209,7 @@
           "CENTER": "'500@10'",
           "STEP_SIZE": "'6 h'",
           "VEC_TABLE": "'2'",
+          "TIME_TYPE": "'UT'",
           "OUT_UNITS": "'KM-S'",
           "CSV_FORMAT": "'YES'",
           "COMMAND": "'{id}'",
@@ -394,8 +396,51 @@
       "freshness_max": "3h",
       "parser": "swpc_ovation",
       "outputs": [
-        "aurora.png",
         "aurora-summary.json"
+      ]
+    },
+    {
+      "id": "eonet-fires",
+      "url": "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=wildfires&days=30",
+      "auth": "none",
+      "refresh": "1h",
+      "freshness_max": "12h",
+      "parser": "eonet",
+      "outputs": [
+        "eonet-fires.json"
+      ]
+    },
+    {
+      "id": "eonet-volcanoes-ice",
+      "url": "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=volcanoes,seaLakeIce",
+      "auth": "none",
+      "refresh": "1h",
+      "freshness_max": "12h",
+      "parser": "eonet",
+      "outputs": [
+        "eonet-volcanoes-ice.json"
+      ]
+    },
+    {
+      "id": "swpc-solar-regions",
+      "url": "https://services.swpc.noaa.gov/json/solar_regions.json",
+      "auth": "none",
+      "refresh": "1h",
+      "freshness_max": "12h",
+      "parser": "swpc_solar_regions",
+      "outputs": [
+        "solar-regions.json"
+      ]
+    },
+    {
+      "id": "wind",
+      "url": "https://pae-paha.pacioos.hawaii.edu/erddap/griddap/ncep_global.json?ugrd10m%5B({hour3})%5D%5B(-90):10:(90)%5D%5B(0):10:(355)%5D,vgrd10m%5B({hour3})%5D%5B(-90):10:(90)%5D%5B(0):10:(355)%5D",
+      "auth": "none",
+      "refresh": "3h",
+      "freshness_max": "12h",
+      "parser": "wind",
+      "outputs": [
+        "wind.json"
       ]
     },
     {

@@ -12,7 +12,7 @@
 // file alone for a caller that wants only the tag (wantFacts()).
 //
 // NOT IN THE BOOT GRAPH. Like the card, this arrives after the first screen: it imports
-// copy/en.later.js (four of its sections are read here) and sky/passes.js. tests/test_boot_diet.mjs
+// copy/en.facts.js (the four sections of the words it reads; not all of en.later.js) and sky/passes.js. tests/test_boot_diet.mjs
 // holds it out.
 
 import { COPY, t, fmt, timeText, fistsWords, inWords, ageInWords, UNITS } from '../copy/en.js';
@@ -23,7 +23,7 @@ import { sunlitState } from '../scene/shadow.js';
 import { periodMsOf } from '../scene/orbitline.js';
 import { gmst, eciToEcef, ecefToGeodetic, geodeticToEcef, parseFrame, bodyFixedToSpherical, worldRadiusKm, toStage, spinPeriodHours, moonLapHours, yearDays } from '../propagate/frames.js';
 import { predictPasses } from '../sky/passes.js';
-import '../copy/en.later.js';
+import '../copy/en.facts.js';
 
 // WHAT A GENERATED STAR SYSTEM ADDS TO A CARD (internal #466), handed in by ui/cards.js and not
 // imported here: this module also serves the light embed, which has no star systems, and
@@ -470,6 +470,21 @@ export function endedWords(record, m) {
   return tMs >= ms ? timeText.utcLong(ms) : null;
 }
 
+/**
+ * A craft whose path file stops BEFORE its mission did (Stardust: JPL's file ends 12 March 2011, the
+ * transmitter went off on 25 March), at a clock after the path's end: the day the path ends, in words;
+ * else null. Not "ended": the mission had not, and "could not work this out" said the sum failed
+ * when the truth is that no path exists (internal #478, #550).
+ */
+export function pathEndedWords(record, m) {
+  const end = pick(meta(record), 'pathEndDate');
+  if (!end || (m && m.ok) || endedWords(record, m)) return null;
+  const ms = Date.parse(`${end}T00:00:00Z`);
+  if (!Number.isFinite(ms)) return null;
+  const tMs = m && Number.isFinite(m.tMs) ? m.tMs : Date.now();
+  return tMs >= ms ? timeText.utcLong(ms) : null;
+}
+
 export function rightNowRows(record, m, passInfo) {
   const R = COPY.card.rows;
   const V = COPY.card.values;
@@ -488,6 +503,8 @@ export function rightNowRows(record, m, passInfo) {
     // A craft whose mission is over (internal #424): the day it ended, not a failed sum.
     const ended = endedWords(record, m);
     if (ended) { rows.push([R.ended, ended]); return rows; }
+    const pathEnds = pathEndedWords(record, m);
+    if (pathEnds) { rows.push([R.pathEnds, pathEnds]); return rows; }
     rows.push([R.altitude, COPY.card.couldNotLook]);
     return rows;
   }
@@ -647,7 +664,9 @@ export function rightNowRows(record, m, passInfo) {
     // Worked out from its brightness and colour (scene/stars3d.js starPhysical), and it says so:
     // the same number the disc on the scene is drawn from.
     const width = pickNumber(md, 'widthSuns');
-    if (width !== null && width > 0) rows.push([R.starWidth, t(V.sunsWide, { n: fmt.smart(width) })]);
+    if (width !== null && width > 0) rows.push([R.starWidth, t(md.widthFrom === 'measured' ? V.sunsWideMeasured : V.sunsWide, { n: fmt.smart(width) })]);
+    const widthSource = pick(md, 'widthSource');
+    if (width !== null && width > 0 && md.widthFrom === 'measured' && widthSource) rows.push([R.widthSource, String(widthSource)]);
     const hip = pick(md, 'hip');
     if (hip) rows.push([R.catalogue, `HIP ${hip}`]);
     // The host of a generated system (internal #466): the table's numbers for the star, and the

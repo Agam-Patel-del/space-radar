@@ -33,7 +33,7 @@ check(byId.get('saturn').look.contrast.gain === SATURN_CONTRAST && SATURN_CONTRA
 // ---- 2. the shader ----------------------------------------------------------------------------
 check(/if \( uContrast != 1\.0 \) base = clamp\( uMapMean \+ \( base - uMapMean \) \* uContrast, 0\.0, 1\.0 \);/.test(WORLD_FRAG), 'the contrast is about the map\'s own mean, and clamped');
 check(/float dLit = uWrap > 0\.0 \? \( d \+ uWrap \) \/ \( 1\.0 \+ uWrap \) : d;/.test(WORLD_FRAG), 'the wrap is (d + w) / (1 + w): full at the sub-solar point, 0 at asin(w) past the terminator');
-check(/if \( uReliefK\.x > 0\.0 \) \{[\s\S]*?texture2D\( uRelief/.test(WORLD_FRAG) && (WORLD_FRAG.match(/texture2D\( uRelief/g) || []).length === 4, 'the relief is four reads behind its uniform: none without it');
+check(/if \( uReliefK\.x > 0\.0 \) \{[\s\S]*?texture2D\( uGlobeRelief/.test(WORLD_FRAG) && (WORLD_FRAG.match(/texture2D\( uGlobeRelief/g) || []).length === 4, 'the relief is four reads behind its uniform: none without it');
 check(/direct \*= smoothstep\( -0\.03, 0\.05, dGeo \)/.test(WORLD_FRAG), 'a slope facing the Sun beyond the ball\'s terminator stays dark');
 check(/varying vec3 vEastW;/.test(WORLD_VERT) && /varying vec3 vEastW;/.test(WORLD_FRAG), 'east on the ground comes from the vertex shader');
 
@@ -111,6 +111,29 @@ check(/steeper than measured/.test(recs.get('mercury').meta.departure || '') && 
 check(/adjustment of ours/.test(recs.get('saturn').meta.departure || '') && recs.get('saturn').meta.departure.includes(`${SATURN_CONTRAST} times`), 'Saturn\'s card says its bands are adjusted, and by how much');
 check(/illustrative/.test(recs.get('venus').meta.departure || ''), 'Venus\'s card says its glow is illustrative');
 check(!recs.get('mars').meta.departure && !recs.get('jupiter').meta.departure, 'no other world gains a sentence');
+
+// The two worlds with ground sites are cut finely: a lander on the true radius must not float over the drawn ground
+// (internal #565, public #406: "stars visible below the horizon", the shell under the surface).
+{
+  const { segmentsFor, sagKm, SITE_BODIES } = await import(join(JS, 'scene/worlds.js'));
+  const sites = readFileSync(join(ROOT, 'registry/sites.yaml'), 'utf8');
+  const bodies = new Set([...sites.matchAll(/\bworld:\s*([a-z]+)/g)].map((m) => m[1]));
+  bodies.delete('earth'); // the Earth's sphere is scene/earth.js's own, cut by its own SEGMENTS
+  check(bodies.has('moon') && bodies.has('mars') && bodies.size === 2, `registry/sites.yaml puts ground sites on the Moon and Mars only (${[...bodies]})`);
+  for (const b of bodies) check(SITE_BODIES.has(b), `${b} has ground sites in registry/sites.yaml, so its sphere is cut finely`);
+  const moonR = WORLDS.find((w) => w.id === 'moon').radiusKm;
+  check(sagKm(moonR, 64) > 2 && sagKm(moonR, 64) < 2.3, `at 64 segments the Moon's facets sag ${sagKm(moonR, 64).toFixed(2)} km (the old shell)`);
+  const seg = segmentsFor('moon');
+  check(sagKm(moonR, seg.width) < 0.25, `the Moon's facets now sag ${sagKm(moonR, seg.width).toFixed(3)} km`);
+  const marsR = WORLDS.find((w) => w.id === 'mars').radiusKm;
+  check(sagKm(marsR, segmentsFor('mars').width) < 0.5, `Mars's facets sag ${sagKm(marsR, segmentsFor('mars').width).toFixed(3)} km`);
+  check(segmentsFor('jupiter').width === 64 && segmentsFor('earth').width === 64, 'every other world keeps its 64 x 48');
+  // The fine cut is worn near only (CI's trips walk, 2026-10-10: two dots cost 61 000 triangles at every stop).
+  const { fineCutWanted, FINE_CUT_AT } = await import(join(JS, 'scene/worlds.js'));
+  check(fineCutWanted(0) === false && fineCutWanted(FINE_CUT_AT / 2) === false && fineCutWanted(FINE_CUT_AT) === true && fineCutWanted(40) === true && fineCutWanted(NaN) === false, 'a dot wears the 64 x 48 sphere, a disc the fine one');
+  // 35 km over the Moon (the nearest the camera goes) is a disc many times the view: the fine cut is on there.
+  check(fineCutWanted(1737.4 / (1737.4 + 35) / Math.tan(22.5 * Math.PI / 180)), 'at a ground site the fine cut is worn');
+}
 
 if (problems.length) { console.error(`world looks: ${problems.length} problem(s)\n  - ` + problems.join('\n  - ')); process.exit(1); }
 console.log('world looks ok: Venus\'s soft terminator, Saturn\'s contrast (not on the Hubble face) and Mercury\'s relief (tier 1 up, given back with the map) are each behind their own uniform, and each card says what is adjusted');

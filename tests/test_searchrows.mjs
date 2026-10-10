@@ -53,6 +53,34 @@ check((closest(index, 'satrun')[0] || {}).record.id === 'saturn', '"satrun" offe
   check(R.describe({ id: 'a11', name: 'Apollo 11', klass: 'site', frame: 'moon-fixed', meta: {} }, null).kind === COPY.searchRows.kinds.landing && R.describe({ id: 'ksc', name: 'KSC', klass: 'site', frame: 'earth-fixed', meta: {} }, null).kind === 'Place', 'a site on the Moon is a landing site');
   check(R.whereNow(recs[0], { observer: null }) === null && R.whereNow({ id: 'earth', klass: 'world' }, up) === null, 'no place, or the Earth itself: nothing said');
   check(R.whereNow(recs[0], { ...up, satAltAz: () => { throw new Error('x'); } }) === null, 'a position that cannot be worked out says nothing');
+  // A probe, a comet and an asteroid are found where they are round the Sun (internal #551).
+  {
+    const at = { altDeg: 33, azDeg: 270 };
+    const env = { ...up, helioAltAz: (r) => (r.id === 'gone' ? null : at) };
+    for (const klass of ['probe', 'comet', 'asteroid']) {
+      const r = R.whereNow({ id: klass, klass, name: klass }, env);
+      check(r && r.up === true && r.compass === 'west', `a ${klass} at 33 degrees due west is up, to the west (${JSON.stringify(r)})`);
+    }
+    check(R.whereNow({ id: 'gone', klass: 'probe' }, env) === null, 'a probe with no position says nothing');
+    check(R.whereNow({ id: 'p', klass: 'probe' }, up) === null, 'and with no way to ask, nothing');
+    check(R.whereNow({ id: 'p', klass: 'probe' }, { ...env, helioAltAz: () => ({ altDeg: -5, azDeg: 10 }) }).up === false, 'below the horizon is not up');
+    check(R.describe({ id: 'c', klass: 'comet', name: 'C/2025 X' }, env).where === 'up now, west', `the row says it ("${R.describe({ id: 'c', klass: 'comet', name: 'C/2025 X' }, env).where}")`);
+    // The real conversion (whereEnv's), against a body whose place is known: the Sun is a world, so
+    // compare a heliocentric record placed at the Earth's own position -- nothing to point at.
+    // helioAltAz as the app builds it: a rock 1e7 km from the Earth along the Sun's direction is
+    // where the Sun is (to well within the "up / low / below" a row can tell apart).
+    const t = Date.parse('2026-06-21T12:00:00Z');
+    const place = { latRad: 0.9, lonRad: 0.1 };
+    const real = await R.whereEnv({ observer: place, clock: { now: () => t } });
+    const earth = (await import(join(JS, 'propagate/frames.js'))).worldHelioEclKm('earth', t);
+    const n = Math.hypot(earth.x, earth.y, earth.z);
+    const sunward = { x: earth.x - (earth.x / n) * 1e7, y: earth.y - (earth.y / n) * 1e7, z: earth.z - (earth.z / n) * 1e7 };
+    const rock = { id: 'rock', klass: 'asteroid', name: 'Rock', propagator: 'static', frame: 'sun-inertial', pos: sunward };
+    const there = real.helioAltAz(rock);
+    const sun = real.bodyAltAz('sun');
+    check(there && sun && Math.abs(there.altDeg - sun.altDeg) < 1 && Math.abs(((there.azDeg - sun.azDeg + 540) % 360) - 180) < 1, `a rock sunward of the Earth stands where the Sun does (${JSON.stringify(there)} against ${JSON.stringify(sun)})`);
+    check(real.helioAltAz({ id: 'far', klass: 'probe', propagator: 'static', frame: 'moon-fixed', pos: { x: 1, y: 1, z: 1 } }) === null, 'a position in a frame it cannot turn into a direction says nothing');
+  }
   // One row for the station's modules.
   const hits = findMatches(index, 'iss').hits.map((h) => ({ ...h, row: R.describe(h.record, null) }));
   check(hits.length === 2 && R.mergeSame(hits).length === 1 && R.mergeSame(hits)[0].record.id === 'sat-25544', '"iss" is one row, the hand-picked record standing for its modules');
@@ -116,6 +144,39 @@ check((closest(index, 'satrun')[0] || {}).record.id === 'saturn', '"satrun" offe
   check(R.groupRows(hits, () => 0, null)[0].sub.includes('4 satellites'), 'the count is never less than the rows it replaces');
   const search = readFileSync(join(ROOT, 'site/js/ui/search.js'), 'utf8');
   check(/hit\.extra === 'group'/.test(search) && /m\.groupRows\(/.test(search) && /rows\.splice\(0, rows\.length, \.\.\.grouped\)/.test(search) && !/rows\.length = 0/.test(search) && /state\.more\.rowIcon\(hit\)/.test(search), 'the field folds the rows, opens the group on a press, and draws the icon');
+}
+
+// The star patterns (internal #551): "orion" finds the figure, and pressing it turns the dome to it.
+{
+  const names = JSON.parse(readFileSync(join(ROOT, 'site/data/constellation-names.json'), 'utf8'));
+  const lines = JSON.parse(readFileSync(join(ROOT, 'site/data/constellations.lines.json'), 'utf8'));
+  const n = R.setConstellations(names, lines);
+  check(n >= 85 && n <= 90, `${n} star patterns have a name and lines`);
+  const orion = R.findExtras('orion').find((e) => e.extra === 'constellation');
+  check(orion && orion.name === 'Orion' && orion.sub === COPY.searchRows.starPattern, `"orion" finds the constellation (${JSON.stringify(orion)})`);
+  check(R.findExtras('orion')[0].extra === 'constellation', 'and it is the first extra row, before the trips that mention it');
+  // Orion's belt is at about RA 5h 35m (84 degrees), Dec about 0 to -2; the mean of the whole figure is in that corner of the sky.
+  check(orion && Math.abs(orion.raDeg - 84) < 8 && Math.abs(orion.decDeg - 0) < 8, `Orion's aim is RA ${orion && orion.raDeg.toFixed(1)}, Dec ${orion && orion.decDeg.toFixed(1)}`);
+  const and = R.findExtras('andromeda').find((e) => e.id === 'And');
+  check(and && and.raDeg > 5 && and.raDeg < 30 && and.decDeg > 25 && and.decDeg < 50, `Andromeda's aim is inside the figure, not at the label's end (${and && and.raDeg.toFixed(1)}, ${and && and.decDeg.toFixed(1)})`);
+  check(R.constellationCentre({ geometry: { type: 'MultiLineString', coordinates: [[[350, 0], [10, 0]]] } }).raDeg < 1e-6 + 360 && Math.abs(((R.constellationCentre({ geometry: { type: 'MultiLineString', coordinates: [[[350, 0], [10, 0]]] } }).raDeg + 180) % 360) - 180) < 1e-6, 'a figure across RA 0 is centred on 0, not on 180');
+  check(R.constellationCentre({}) === null && R.constellationCentre(null) === null, 'no lines, no centre');
+  // Pressing the row: the dome is entered (the Now door) and turned; below the horizon the scene says so.
+  const calls = [];
+  const ctx = (aimed, active) => ({
+    skyView: { active, pointAt: (t) => { calls.push(['pointAt', Math.round(t.raDeg)]); return aimed; } },
+    setMoment: (m) => calls.push(['moment', m]),
+    sceneNote: { say: (l) => calls.push(['say', l]) },
+  });
+  check(R.runExtra(ctx(true, false), orion) === true && calls[0][0] === 'moment' && calls[0][1] === 'now' && calls[1][0] === 'pointAt', 'from the map the Now door opens the dome, then it turns');
+  calls.length = 0;
+  check(R.runExtra(ctx(true, true), orion) === true && calls.length === 1 && calls[0][0] === 'pointAt', 'inside the dome it only turns');
+  calls.length = 0;
+  R.runExtra(ctx(false, true), orion);
+  check(calls.some((c) => c[0] === 'say' && c[1] === 'Orion is under the horizon.'), 'a figure under the horizon is said so in the scene\'s one line');
+  check(R.runExtra({}, orion) === false, 'with no sky view the row does nothing and says false');
+  const src = readFileSync(join(ROOT, 'site/js/ui/searchrows.js'), 'utf8');
+  check(/loadConstellations\(\);/.test(src) && !/^import[^\n]*constellation-names/m.test(src), 'the two files are fetched when the module lands, not imported');
 }
 
 if (problems.length) { console.error('searchrows FAILED:\n  ' + problems.join('\n  ')); process.exit(1); }

@@ -277,7 +277,7 @@ for sid, row in reg.items():
     if row["attribution"] not in got[0]:
         miss.append(f"{sid}: attribution")
 sources_html = (BUILT / "sources" / "index.html").read_text(encoding="utf-8")
-ok(not miss and len(rows) == len(reg) == 24, f"/sources/ equals registry/sources.yaml: {len(rows)} rows, each licence, terms date and credit ({miss[:3]})")
+ok(not miss and len(rows) == len(reg) >= 25, f"/sources/ equals registry/sources.yaml: {len(rows)} rows, each licence, terms date and credit ({miss[:3]})")
 ok(all(f'href="{r["terms_url"]}"' in sources_html for r in reg.values()), "each row links the page that states its terms")
 acc = parse(BUILT / "accuracy" / "index.html")
 ok(all(w in acc.plain for w in ("measured", "modelled", "illustrative")) and "the picture is an artist's impression" in acc.plain
@@ -411,7 +411,8 @@ with tempfile.TemporaryDirectory() as tmp:
     ok(r.returncode == 0, f"deploy.sh --app-only --dry-run: {(r.stderr or r.stdout).strip().splitlines()[-1:]}")
     for d in ("about", "accuracy", "events", "iss", "planets-tonight", "satellites", "sources", "starlink", "teachers"):
         s = [c for c in calls if c.startswith("s3 sync") and f"s3://example-bucket/{d} " in c + " "]
-        ok(len(s) == 1 and "text/html" in s[0] and "no-cache" in s[0] and "--delete" in s[0], f"{d}/ is synced as no-cache HTML with --delete")
+        ok(len(s) == 1 and "text/html" in s[0] and "max-age=0, must-revalidate" in s[0] and "--content-encoding" not in s[0] and "--delete" in s[0],
+           f"{d}/ is synced as written, as HTML a browser revalidates on every load, with --delete")
     ok(re.search(r"would upload sitemap-images\.xml \(application/xml", r.stdout) is not None, "sitemap-images.xml is uploaded as XML")
     body = (ROOT / "scripts" / "deploy.sh").read_text(encoding="utf-8")
     ok('"/sitemap-images.xml"' in body and 'PATHS+=("/$dir/*")' in body and "share" in body, "the invalidation names the new directories and the image sitemap; share/ has its own PNG sync")

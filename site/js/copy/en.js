@@ -936,6 +936,8 @@ export const COPY = {
     open: 'Open in Space Radar',
     openTitle: 'Open this view in the full map, in a new tab',
     barLabel: 'Space Radar, embedded',
+    // The light embed of a station whose list could not be read at all: it shows the Earth and says so.
+    stationUnread: 'Showing the Earth: the station’s place could not be read',
   },
   // Spec 0045 req 10: how tightly the panels are set. Automatic is Compact on a window 800 px tall
   // or less; the note under the row says which one Automatic picked.
@@ -1186,6 +1188,7 @@ export const COPY = {
       // A famous star's one line (registry/stars-notable.yaml) and the page it came from. Not
       // `source`: on a star card every other row is HYG's, and "Read from" would claim them too.
       whySource: 'Why it is known, read from',
+      widthSource: 'Width read from',
       distanceNote: 'About that distance',
       objectType: 'What it is',
       constellation: 'Constellation',
@@ -1206,6 +1209,7 @@ export const COPY = {
       operator: 'Operated by',
       launched: 'Launched',
       ended: 'Ended',
+      pathEnds: 'Its path ends',
       period: 'One lap takes',
       location: 'Where it stands',
       onWorld: 'Standing on',
@@ -1270,6 +1274,8 @@ export const COPY = {
       suns: '{n}× the Sun',
       // A star's width worked out from its brightness and colour, not measured (scene/stars3d.js).
       sunsWide: '{n}× the Sun, estimated',
+      // A width an interferometer measured (registry/stars-notable.yaml carries the paper).
+      sunsWideMeasured: '{n}× the Sun, measured',
       earths: '{n}× Earth',
       lightYearsRange: '{lo} to {hi} light-years',
       // Sedna's width is 906 km, +314 / -258: nobody has weighed or resolved it, so the card
@@ -1310,12 +1316,14 @@ export const COPY = {
     notApplicable: 'Not something this object has',
     // In place of the three numbers, on the card of a craft whose mission is over.
     endedLine: 'Its mission ended on {date}. Its events, below, go back to it.',
+    pathEndedLine: 'The path JPL holds for it ends on {date}. Its events, below, go back to it.',
     noPosition: 'There is no position for this object right now.',
 
     actions: {
       flyTo: 'Fly to it',
       flyToTitle: 'Move the camera to this object',
       flyEnded: 'It ended on {date}. Choose an event of its mission to go there',
+    flyPathEnded: 'Its path ends on {date}. Choose an event of its mission to go there',
       flyNowhere: 'There is no position for this object at this moment',
       seeFromHere: 'See it from here',
       seeFromHereTitle: 'Look up from your own place on Earth',
@@ -1431,6 +1439,9 @@ export const COPY = {
   sun: {
     spots: '{n} sunspot groups are drawn, from NOAA’s list for {date}: each as one round spot at its reported place and size, carried round by the Sun’s turning since then.',
     spotsOne: 'One sunspot group is drawn, from NOAA’s list for {date}: as one round spot at its reported place and size, carried round by the Sun’s turning since then.',
+    // When some of the groups are drawn as two (scene/sun.js, data/sunregions.js splitRegion): {pairs} of the {n}.
+    spotsPaired: '{n} sunspot groups are drawn, from NOAA’s list for {date}, carried round by the Sun’s turning since then. {pairs} with several spots are drawn as a leading spot to the west and a following spot to the east; the gap and how the area is shared between the two are illustrative. The rest are one round spot.',
+    spotsPairedOne: 'One sunspot group is drawn, from NOAA’s list for {date}, carried round by the Sun’s turning since then: as a leading spot to the west and a following spot to the east. The gap and how the area is shared between the two are illustrative.',
     regionsCredit: 'Today’s sunspot groups: NOAA Space Weather Prediction Center, solar region summary',
   },
 

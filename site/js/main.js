@@ -23,7 +23,7 @@ import { parsePlaceValue, keptPlace, browserStorage } from './sky/placelink.js';
 import { dropFrom, readMoment, writeMoment, bootLink, laterLink, linkChange, read as readUrlKeys, write as writeUrlState, clear as clearUrlState, stopIndex, parseCam } from './ui/urlstate.js';
 import { guessObserver, roundPlace } from './sky/guessplace.js';
 import { COPY, CITIES, t as fill } from './copy/en.js';
-import { LAYERS, loadLayer, addSystemRows } from './data/layers.js';
+import { LAYERS, loadLayer, addSystemRows, addPlanetAliases } from './data/layers.js';
 import * as sources from './data/sources.js';
 import { createSkyView } from './sky/skyview.js';
 import { showCard, hideCard, wantCards } from './ui/cardgate.js';
@@ -58,7 +58,8 @@ import { createOrbitLine } from './scene/orbitline.js';
 import { createGroundTrack } from './scene/groundtrack.js';
 import { createTrackLabels } from './ui/tracklabels.js';
 import { createOrbitRings, periodMsOfWorld, MARKER_PX } from './scene/orbitrings.js';
-import { createFrameLatch, shouldSaveData, chooseTier, createTierPromoter } from './scene/quality.js';
+import { tripOwnsCard } from './ui/tripstate.js';
+import { createFrameLatch, createScaleGovernor, shouldSaveData, chooseTier, createTierPromoter, createIdleGate, idleCapWanted, movingReasons } from './scene/quality.js';
 import { createLiveClouds } from './scene/liveclouds.js';
 import { createTextureTiers, gpuMiB, variantFor, LIVE_CLOUDS_MIB } from './scene/texturetiers.js';
 import { TEXTURES } from './data/textures.js';
@@ -135,6 +136,20 @@ function weatherStandIn(off, layerOn) {
 // DEEP SKY TOO (2026-10-06, internal #405): data/dso.json is 116 kB and its layer is `ladderOnly`,
 // drawn from the ladder's rungs like the other two; the ground sky's pictures look their record up
 // when it has landed (sky/groundsky.js), and a trip, a link and the search box already wait here.
+/**
+ * A layer record by id, without the frame loop allocating a closure to find it (internal #529).
+ * The index is rebuilt only when the table's length changes (addSystemRows appends rows).
+ */
+const layerIndex = new Map();
+let layerIndexLen = -1;
+function layerRec(id) {
+  if (layerIndexLen !== LAYERS.length) {
+    layerIndex.clear();
+    for (const l of LAYERS) if (!layerIndex.has(l.id)) layerIndex.set(l.id, l);
+    layerIndexLen = LAYERS.length;
+  }
+  return layerIndex.get(id);
+}
 const LATER_LAYERS = new Set(['stars', 'exoplanets', 'deep-sky']);
 const LATER_LAYERS_MS = 3000;
 /** How long after sr:layers-ready the controls hint is imported and may show (ui/keyhint.js): after
@@ -418,7 +433,15 @@ export async function boot({ setStatus } = {}) {
     else if (isLadderStage(id)) ctx.wantNebulae();
     if (isSystemStage(id)) systems.enter(id);
     else systems.leave();
+    // The Milky Way is fetched, built and its shaders compiled while the stellar rung is up (internal
+    // #549: entering the galaxy rung stalled about three seconds), not on the galaxy rung's first frame.
+    // Not on a metered connection, where the 2.2 MB file waits for the rung that draws it.
+    if (id === 'stellar' && !galaxyPrewarm) {
+      const saver = typeof navigator !== 'undefined' && navigator.connection && navigator.connection.saveData;
+      if (!saver) galaxyPrewarm = setTimeout(() => { galaxy.prewarm(renderer, ctx.camera); }, 2500);
+    }
   });
+  let galaxyPrewarm = 0;
   ctx.lod = lod;
   ctx.skyView = createSkyView(ctx);
   const heroes = createHeroes(scene, ctx);
@@ -511,6 +534,7 @@ export async function boot({ setStatus } = {}) {
       ctx.wind = m.createWind({
         earth: () => worlds.meshFor('earth'),
         saveData: typeof navigator !== 'undefined' && shouldSaveData(navigator.connection),
+        tier: ctx.quality ? ctx.quality.tier : 1, // 600, 1200 or 2400 streaks (scene/wind.js COUNT_BY_TIER)
         reducedMotion: !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches),
         onChange: tellOverlay,
       });
@@ -733,14 +757,14 @@ export async function boot({ setStatus } = {}) {
   // layer, never loaded, and the box did nothing. "Everything active", the geostationary ring,
   // the famous debris and the reentries read "nothing loaded" on every visit for that reason.
   function isLayerOn(id) {
-    const layer = LAYERS.find((l) => l.id === id);
+    const layer = layerRec(id);
     if (!layer) return false;
     if (layer.forcedOff) return false;
     return layer.on !== undefined ? layer.on : !!(layer.moments && layer.moments[moment]);
   }
   ctx.isLayerOn = isLayerOn;
   ctx.setLayerOn = (id, on) => {
-    const layer = LAYERS.find((l) => l.id === id);
+    const layer = layerRec(id);
     if (layer) layer.on = on;
     if (layer && on && layer.deferred && typeof ctx.loadLayerNow === 'function') ctx.loadLayerNow(layer);
     const gl = glyphLayers.get(id);
@@ -810,7 +834,7 @@ export async function boot({ setStatus } = {}) {
   }
   if (!embed) window.addEventListener('sr:layers-ready', loadAuroraLater, { once: true });
   {
-    const layer = LAYERS.find((l) => l.id === 'aurora');
+    const layer = layerRec('aurora');
     if (layer) {
       // The panel's number for this layer is the forecast's peak probability (copy/en.js
       // controls.layerCountParts.auroraPeak), not a count of records: it has none.
@@ -855,7 +879,7 @@ export async function boot({ setStatus } = {}) {
   }
   if (!embed) window.addEventListener('sr:layers-ready', loadWeatherLater, { once: true });
   {
-    const layer = LAYERS.find((l) => l.id === 'lightning');
+    const layer = layerRec('lightning');
     if (layer) {
       // The panel's number for this layer is strikes a minute in NOAA's latest map (copy/en.js
       // controls.layerCountParts.lightningPerMin), not a count of records: it has none.
@@ -1266,7 +1290,7 @@ export async function boot({ setStatus } = {}) {
     // A star's own width, for its card (ui/cards.js prints it as an estimate) and its disc.
     if (record && record.klass === 'star' && record.meta && !Number.isFinite(record.meta.widthSuns)) {
       const phys = stars3d.physicalOf(record);
-      if (phys) record.meta.widthSuns = phys.radiusKm / SUN_RADIUS_KM;
+      if (phys) { record.meta.widthSuns = phys.radiusKm / SUN_RADIUS_KM; record.meta.widthFrom = phys.how; }
       // The first star chosen from a world's stage is chosen before the catalogue's binary has
       // landed (it is fetched when the ladder first draws). Its width is known once it has: the
       // card is repainted with it and the camera goes on in, if this star is still the selection.
@@ -1275,6 +1299,7 @@ export async function boot({ setStatus } = {}) {
           const late = selected === record ? stars3d.physicalOf(record) : null;
           if (!late) return;
           record.meta.widthSuns = late.radiusKm / SUN_RADIUS_KM;
+          record.meta.widthFrom = late.how;
           wantStarDisc(record);
           showCard(record, ctx);
           if (opts.fly !== false) flyToRecord(record);
@@ -1341,7 +1366,11 @@ export async function boot({ setStatus } = {}) {
   }
   ctx.rememberView = rememberView;
   ctx.offerUndo = offerUndo;
-  ctx.refreshCard = () => { if (selected) showCard(selected, ctx); };
+  // Not while a trip is at a stop: the card there is the stop's own (ui/trip.js paints it with the
+  // stop's title and words), and a mission that landed a moment later repainted it as the object's
+  // whole card. Seen 2026-10-09 on both Voyager 1 stops ("A gold record, further away than
+  // anything" was read aloud under a card that said PROBE, 7 of 7 and "Fly to it").
+  ctx.refreshCard = () => { if (selected && !tripOwnsCard(ctx.trip && ctx.trip.state)) showCard(selected, ctx); };
   /**
    * Run `fn` once the scene has been placed at the clock's new time. A world's drawn position,
    * and so a landing site's, is what the last frame put there: SEEN 2026-10-06, the clock set to
@@ -1610,7 +1639,7 @@ export async function boot({ setStatus } = {}) {
       const cv = ctx.renderer && ctx.renderer.domElement;
       return groundDistanceKm(cv && cv.clientHeight > 0 ? cv.clientHeight : window.innerHeight, camera.fov) / stage.unitKm;
     }
-    const layer = LAYERS.find((l) => l.id === record.layer);
+    const layer = layerRec(record.layer);
     const nearKm = (layer && layer.nearKm) || 2000;
     // No farther than the selected model can be drawn at full size (scene/heroes.js
     // closeUpDistance): at 35 % of the stations layer's nearKm the camera parked 7 000 km from
@@ -1663,7 +1692,7 @@ export async function boot({ setStatus } = {}) {
     const upDot = ((pos.x - centre.x) * up.x + (pos.y - centre.y) * up.y + (pos.z - centre.z) * up.z) / (r * upLen);
     const el = ctx.renderer && ctx.renderer.domElement;
     const h = el && el.clientHeight > 0 ? el.clientHeight : window.innerHeight;
-    const layer = LAYERS.find((l) => l.id === record.layer);
+    const layer = layerRec(record.layer);
     // A model's bounding circle is drawn MODEL_SPAN times SELECTED_PX across: MEASURED 2026-10-02,
     // the ISS's reticle 356 px at 1440x900 and 351 at 390x844, which is the drawn diameter + 12
     // (ui/hud.js reticleBox). A thing with no model is its dot inside the reticle.
@@ -1940,7 +1969,7 @@ export async function boot({ setStatus } = {}) {
     }
     if (plan.trip) ctx.trip.stop();
     // A mission's event (ui/missions.js): it selects its own record and sets the clock.
-    if (plan.event) { ctx.wantMissions().then((m) => { if (!m || !m.openEvent(ctx, plan.event)) linkNote(ctx, COPY.mission.unknown, ['event']); }); return; }
+    if (plan.event) { ctx.wantMissions().then((m) => (m ? m.openEventWhenReady(ctx, plan.event) : false)).then((ok) => { if (!ok) linkNote(ctx, COPY.mission.unknown, ['event']); }); return; }
     if (plan.at && plan.at.open) openAt(ctx, plan.at.open);
     else if (plan.at) ctx.deselect();
     if (keys.cam) applyCam(ctx, keys.cam);
@@ -1957,6 +1986,14 @@ export async function boot({ setStatus } = {}) {
     if (!record) { clearUrlState(['at']); return; }
     if (ctx.trip && ctx.trip.currentRecordId() === record.id) return;
     writeUrlState({ at: record.id });
+  });
+  // `stage` is the map's centre when it is not the Earth's (internal #485): written on every
+  // stage change, cleared on the Earth, so an address without it can be read as the Earth's map
+  // (ui/urlstate.js linkChange). Not during a trip: the trip owns its stages, as it owns `at`.
+  window.addEventListener('sr:stage', (e) => {
+    if (ctx.trip && ctx.trip.state && ctx.trip.state.phase !== 'idle') return;
+    const id = e && e.detail ? e.detail.worldId : stage.worldId;
+    if (id === 'earth') clearUrlState(['stage']); else writeUrlState({ stage: id });
   });
   // `t` and `rate`, only when the clock is not live (req 5): a link never carries `t=now`, and
   // `t` absent means now. Trailing-edge throttle at one write a second, because a scrub is a
@@ -2031,8 +2068,10 @@ function createQuality(ctx, renderer, starfield, worlds) {
   const aniso = renderer.capabilities && renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 8;
   const loader = new THREE.TextureLoader();
   const earthMesh = () => worlds.meshFor('earth');
+  const deviceOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
   const tiers = createTextureTiers({
     tier: pick.tier,
+    offline: deviceOffline,
     month: () => new Date(clock.now()).getUTCMonth() + 1,
     // decode() before the texture is handed over: Chrome otherwise decodes a 4k image on the main
     // thread inside the upload, in the middle of a frame.
@@ -2093,6 +2132,9 @@ function createQuality(ctx, renderer, starfield, worlds) {
   const tilesSaveData = shouldSaveData(nav.connection);
   function planetTilesWanted() {
     if (planetTilesAsked || tilesSaveData || tiers.latched || tiers.tier < 1) return;
+    // OFFLINE (internal #564, the integration pass of 2026-10-10): a kept trip played with no network asked
+    // NASA's Moon mosaic for six tiles that could only fail. Asked again by the next tick once the network is back.
+    if (deviceOffline()) return;
     if (!worlds.ids().some((id) => id !== 'sun' && worlds.discShare(id) >= (id === 'earth' ? EARTH_TILES_AT : PLANET_TILES_AT))) return;
     planetTilesAsked = true;
     import('./scene/tiles.js').then((m) => {
@@ -2121,8 +2163,7 @@ function createQuality(ctx, renderer, starfield, worlds) {
       if (tiers.latched) detail.latch();
       ctx.sunDetail = detail;
       if (tilesSaveData || tiers.latched) return;
-      import('./data/sunregions.js').then((r) => fetch(r.SUN_REGIONS_URL, { mode: 'cors', credentials: 'omit' })
-        .then((res) => (res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status))))
+      import('./data/sunregions.js').then((r) => r.readSunRegions() // our saved copy first (internal #525)
         .then((json) => {
           const list = r.parseSunRegions(json);
           detail.setRegions(list);
@@ -2200,9 +2241,14 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
   // The frame-rate latch (spec 0026 req 18): twenty-frame median over 33 ms for three seconds ->
   // one device pixel per CSS pixel and no Milky Way picture, once, said in the panel.
   const latch = createFrameLatch();
+  // The step before it (internal #521): 2, 1.5, 1.25, 1 of the device's pixel ratio; the latch is fed
+  // only from the lowest step, and stays the last resort.
+  const scaler = createScaleGovernor({ deviceRatio: typeof devicePixelRatio === 'number' ? devicePixelRatio : 1 });
+  ctx.scaler = scaler;
   // Read every frame by the aurora's folds; one query object, not a matchMedia call a frame.
   const reducedMotionQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   function degrade() {
+    scaler.freeze();
     if (ctx.renderer && ctx.rendererApi && ctx.rendererApi.setQuality) ctx.rendererApi.setQuality('low');
     if (starfield && starfield.setDetail) starfield.setDetail('low');
     if (ctx.nebulae) ctx.nebulae.setSkyVisible(false);
@@ -2233,8 +2279,74 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
   ctx.eclipseOverride = null;
   ctx.eclipseDrawn = () => ctx.eclipseOverride !== false;
 
+  // THE IDLE FRAME RATE (internal #520; scene/quality.js has the whole rule). With nothing moving
+  // the loop draws twenty frames a second instead of every one. What "moving" means is ONE list,
+  // movingReasons(), filled at the end of each drawn frame below; what the loop cannot see coming
+  // (a hand on the page, a resize, a file that has just arrived) wakes it through these listeners.
+  const idle = createIdleGate({ enabled: idleCapWanted({ search: location.search, webdriver: navigator.webdriver === true, film: !!ctx.renderMode }) });
+  ctx.idle = idle;
+  {
+    const wake = () => idle.wake(performance.now());
+    for (const type of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'keyup', 'touchstart', 'touchmove', 'resize', 'hashchange', 'focus', 'sr:quality', 'sr:layers-ready', 'sr:opening-end']) {
+      window.addEventListener(type, wake, { passive: true, capture: true });
+    }
+    document.addEventListener('visibilitychange', wake);
+  }
+  // The camera as the last drawn frame left it, and what the GPU held then: both are compared, not
+  // announced, so a flight started from anywhere and a map landing from anywhere are both seen.
+  const seenCamera = new Float64Array(18);
+  let seenGpu = -1;
+  let cameraMovedLast = false;  // the scale governor steps up only while the camera is still
+  let wasCapped = false;
+  let freeFrameMs = 16;
+  function cameraMoved() {
+    const cam = ctx.camera;
+    const m = cam.matrixWorld.elements;
+    const p = cam.projectionMatrix.elements;
+    let moved = false;
+    for (let i = 0; i < 16; i++) if (seenCamera[i] !== m[i]) { seenCamera[i] = m[i]; moved = true; }
+    if (seenCamera[16] !== p[0]) { seenCamera[16] = p[0]; moved = true; }
+    if (seenCamera[17] !== p[5]) { seenCamera[17] = p[5]; moved = true; }
+    return moved;
+  }
+  // A layer that moves by itself, and is doing so NOW. Not "the layer is switched on": the aurora
+  // and the lightning are on for every first visit, and a rule that read the switch kept the loop
+  // at every frame for good (MEASURED in CI on 2026-10-09: the reason at rest was `layer`, always).
+  //   - the aurora moves while it is DRAWN with its folds (a live forecast, the layer on, the
+  //     Earth big enough on screen): with no forecast, or the Earth a dot, there is nothing to move;
+  //   - lightning moves while a map with strikes in it is held: a flash is a third of a second of
+  //     flicker and must have every frame. A phone and a data-saving connection hold none;
+  //   SO THE CAP IS RARE TODAY on a first visit that has a forecast: the oval's folds keep every
+  //   frame. Whether the folds may run at twenty frames a second at rest is a question for an eye,
+  //   not for this file (the internal issue beside #520); until it is answered they get all sixty.
+  //   - the wind and a data overlay, once asked for, are taken to be moving.
+  // (The pulsars' pulses are drawn on the ladder's stages only, which `stage` already answers.)
+  // Asked four times a second: the aurora's state() builds an object.
+  let layerMoving = true;
+  let layerAskedAt = -Infinity;
+  function layerAnimating(nowMs) {
+    if (nowMs - layerAskedAt < 250) return layerMoving;
+    layerAskedAt = nowMs;
+    const aurora = ctx.aurora && typeof ctx.aurora.state === 'function' ? ctx.aurora.state() : null;
+    const flashes = ctx.isLayerOn('lightning') && ctx.weather && typeof ctx.weather.perMinute === 'function' ? ctx.weather.perMinute() : 0;
+    layerMoving = !!(aurora && aurora.visible && aurora.folds) || flashes > 0 || !!ctx.wind || !!ctx.earthOverlay;
+    return layerMoving;
+  }
+  function gpuChanged() {
+    const info = ctx.renderer && ctx.renderer.info && ctx.renderer.info.memory;
+    const now = info ? info.textures * 100000 + info.geometries : 0;
+    const changed = now !== seenGpu;
+    seenGpu = now;
+    return changed;
+  }
+
   function frame(nowReal) {
     requestAnimationFrame(frame);
+    if (idle.skip(nowReal)) return;
+    // This frame's length is ours by choice while the cap is on (and on the frame that ends it):
+    // the latch and the tier promoter are fed the device's own frames only.
+    const capped = idle.capped(nowReal) || wasCapped;
+    wasCapped = idle.capped(nowReal);
     // Never negative. requestAnimationFrame stamps a frame with the time it BEGAN, which can be
     // earlier than the performance.now() `last` was set from -- and a negative first step was added
     // to the 10 Hz accumulator below, holding the glyph and label updates back until real time paid
@@ -2246,9 +2358,24 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     last = nowReal;
     // Not while filming: a film's frames are all one step long (33 ms at 30 fps), which the latch
     // would read as a slow device and answer by throwing the picture's quality away.
-    if (!document.hidden && !ctx.renderMode && latch.push(frameMs, nowReal)) degrade();
+    if (!capped) freeFrameMs = frameMs;
+    if (!document.hidden && !ctx.renderMode && !capped && !latch.latched) {
+      const st = ctx.trip && ctx.trip.state;
+      const shown = !!(st && st.phase !== 'idle') || !!(ctx.autopilot && ctx.autopilot.engaged) || !!(ctx.climb && ctx.climb.state && (ctx.climb.state.active || ctx.climb.state.fading));
+      const calm = !shown && !cameraMovedLast;
+      if (scaler.push(frameMs, nowReal, calm, !shown)) {
+        if (ctx.rendererApi && ctx.rendererApi.setScale) ctx.rendererApi.setScale(scaler.scale);
+        window.dispatchEvent(new CustomEvent('sr:scale', { detail: { ratio: scaler.scale, step: scaler.step } }));
+      }
+      if (scaler.atFloor && latch.push(frameMs, nowReal)) degrade();
+    } else if (capped && !document.hidden && !ctx.renderMode && !latch.latched && scaler.rest(nowReal)) {
+      // The resting view (the idle cap): its frames are slow by choice and never fed above, so the ladder
+      // would wait for the next thing that moves. Rest counts as quick (scene/quality.js).
+      if (ctx.rendererApi && ctx.rendererApi.setScale) ctx.rendererApi.setScale(scaler.scale);
+      window.dispatchEvent(new CustomEvent('sr:scale', { detail: { ratio: scaler.scale, step: scaler.step } }));
+    }
     if (ctx.quality && !document.hidden) {
-      ctx.quality.frame(frameMs, nowReal, latch.latched);
+      if (!capped) ctx.quality.frame(frameMs, nowReal, latch.latched);
       if (nowReal - lastTierTick >= 1000) { lastTierTick = nowReal; ctx.quality.tick(nowReal); }
     }
 
@@ -2266,7 +2393,13 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     // What waited for the scene to stand at a new time (ctx.afterClockJump): a flight to somewhere
     // that has just moved. After the worlds, so a world's place is this frame's; the camera's own
     // update comes round again next frame.
-    if (ctx.afterUpdate && ctx.afterUpdate.length) for (const fn of ctx.afterUpdate.splice(0)) fn();
+    if (ctx.afterUpdate && ctx.afterUpdate.length) {
+      // Run what is queued now; a callback that queues another waits for the next frame. In place
+      // (no splice(0) array per frame, #529).
+      const q = ctx.afterUpdate;
+      const n = q.length;
+      try { for (let i = 0; i < n; i++) q[i](); } finally { q.copyWithin(0, n); q.length -= n; }
+    }
     // The Sun close up, after the worlds have moved: its grain, its corona's plane and today's
     // spots, counted from the meridian that faces the Earth (scene/sun.js).
     if (ctx.sunDetail) {
@@ -2310,7 +2443,7 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     if (sinceLayerUpdate >= interval) {
       sinceLayerUpdate = 0;
       for (const [id, gl] of glyphLayers) {
-        const layer = LAYERS.find((l) => l.id === id);
+        const layer = layerRec(id);
         const drawable = ctx.isLayerDrawable ? ctx.isLayerDrawable(layer) : ctx.isLayerOn(id);
         // EVERY layer, not only the ladder's. This used to be `ladderOnly &&`, which was enough
         // when the ladder was the only reason a layer that is ON is not drawn. It is the only
@@ -2345,7 +2478,7 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
 
     // What the frame cost and what the device has already admitted about itself: scene/heroes.js
     // spends a fast machine's headroom on more models and gives it back when the frames say so.
-    if (heroes) heroes.update(t, { frameMs, latched: latch.latched, saveData, bandPx: ctx.viewShift ? ctx.viewShift.bandHeightPx() : 0 });
+    if (heroes) heroes.update(t, { frameMs: capped ? freeFrameMs : frameMs, latched: latch.latched, saveData, bandPx: ctx.viewShift ? ctx.viewShift.bandHeightPx() : 0 });
     // Stars fade near the Sun's disc (scene/starfield.js sunGlare), wherever the camera is.
     if (starfield && starfield.setSun) starfield.setSun(worlds.drawnPositionOf('sun'), worlds.drawnRadiusUnits('sun'), ctx.camera);
     if (starfield && starfield.update) starfield.update(ctx.camera);
@@ -2364,7 +2497,7 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     if (ctx.figures) ctx.figures.update(ctx.camera, ctx.renderer);
     if (ctx.portraits) ctx.portraits.update(ctx.camera, t, frameMs);
     {
-      const exoticsOn = isLadderStage(stage.worldId) && ctx.isLayerDrawable(LAYERS.find((l) => l.id === 'exotics'));
+      const exoticsOn = isLadderStage(stage.worldId) && ctx.isLayerDrawable(layerRec('exotics'));
       if (ctx.pulsars) ctx.pulsars.update(ctx.camera, ctx.renderer, exoticsOn, nowReal);
       else if (exoticsOn) ctx.wantPulsars(); // asks once: the promise is kept
     }
@@ -2376,9 +2509,11 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     }
     if (ctx.galaxy) ctx.galaxy.update(ctx.camera, ctx.renderer);
     if (ctx.shells) ctx.shells.update(ctx.camera, t);
-    if (ctx.dsoGlow) ctx.dsoGlow.update(ctx.camera, ctx.renderer, ctx.isLayerDrawable(LAYERS.find((l) => l.id === 'deep-sky')));
+    if (ctx.dsoGlow) ctx.dsoGlow.update(ctx.camera, ctx.renderer, ctx.isLayerDrawable(layerRec('deep-sky')));
     if (ctx.nebulae) {
-      ctx.nebulae.update(ctx.camera, ctx.renderer, ctx.isLayerOn('deep-sky'), ctx.isLayerDrawable(LAYERS.find((l) => l.id === 'deep-sky')));
+      ctx.nebulae.update(ctx.camera, ctx.renderer, ctx.isLayerOn('deep-sky'), ctx.isLayerDrawable(layerRec('deep-sky')));
+      // Our stars step aside inside a drawn photograph, which carries its own (scene/starholes.js, internal #344).
+      { const holes = ctx.nebulae.holes(); if (ctx.starfield && ctx.starfield.setHoles) ctx.starfield.setHoles(holes); if (ctx.stars3d && ctx.stars3d.setHoles) ctx.stars3d.setHoles(holes); }
       // Andromeda's photograph and her stand-in model never draw over each other (scene/galaxy.js).
       if (ctx.galaxy) ctx.galaxy.setAndromedaShare(1 - ctx.nebulae.drawn('dso-m31'));
       // Her two companions' ellipses step back with it: the photograph holds them (scene/dsoglow.js).
@@ -2414,6 +2549,25 @@ function startLoop({ ctx, resize, render, worlds, glyphLayers, cameraRig, starfi
     if (ctx.hud) ctx.hud.frame(t);
     // The track's minute marks, on this frame's camera (render() brought its matrices up to date).
     if (ctx.trackLabels) ctx.trackLabels.update();
+    // Is anything moving? Asked after the frame is drawn, because render() is what brings the
+    // camera's matrices up to it. Any reason and the next frames are drawn one for one.
+    {
+      const st = ctx.trip && ctx.trip.state;
+      idle.drew(nowReal, movingReasons({
+        film: !!ctx.renderMode,
+        clockMode: clock.mode,
+        clockRate: clock.rate,
+        trip: !!(st && st.phase !== 'idle'),
+        autopilot: !!(ctx.autopilot && ctx.autopilot.engaged),
+        sky: !!(ctx.skyView && ctx.skyView.active),
+        stage: stage.worldId,
+        climb: !!((ctx.opening && ctx.opening.live) || (ctx.climb && ctx.climb.state && (ctx.climb.state.active || ctx.climb.state.fading)) || (ctx.imagine && ctx.imagine.active)),
+        selected: !!ctx.selected(),
+        cameraMoved: (cameraMovedLast = cameraMoved()),
+        animatedLayer: layerAnimating(nowReal),
+        loading: !window.__srLayersReady || gpuChanged(),
+      }));
+    }
     // The first frame is on screen: from now on the sharper maps may come, when the browser is idle.
     // AFTER THE FIRST VISIT TOO (2026-10-07, internal #415 item 3): the 4k maps are megabytes, and a
     // laptop used to start fetching them beside the catalogues, inside the stretch the byte gate
@@ -2458,7 +2612,9 @@ async function loadAllLayers(ctx, layerRecords, glyphLayers, scene) {
     // One mark per object: the dot fades out as that record's 3D model fades in.
     // Read through ctx at call time: this function has no `heroes` of its own (the first version
     // named one, and the browser check said `heroes is not defined` -- no unit test could).
-    gl.setModelOpacity((id) => (ctx.heroes ? ctx.heroes.drawnOpacity(id) : 0));
+    // A deep-sky dot also gives way to its own glow once that is wider than it (scene/dsoglow.js dotYield).
+    const deepSky = layer.id === 'deep-sky';
+    gl.setModelOpacity((id) => Math.max(ctx.heroes ? ctx.heroes.drawnOpacity(id) : 0, deepSky && ctx.dsoGlow ? ctx.dsoGlow.dotYield(id) : 0));
     gl.setRecords([]);
     // Hidden until its records arrive; one() then sets the real visibility. This loop runs
     // before the first await, and ctx.isLayerOn is attached to ctx after this function is
@@ -2505,7 +2661,8 @@ async function loadAllLayers(ctx, layerRecords, glyphLayers, scene) {
       const moreSystems = () => loadSystemIndex().then((rows) => {
         if (!rows.length) return null;
         addSystemRows(rows);
-        const layer = LAYERS.find((l) => l.id === 'systems');
+        addPlanetAliases(rows, layerRecords.get('exoplanets'));
+        const layer = layerRec('systems');
         return layer ? one(layer) : null;
       });
       laterLoad = Promise.all(later.map((l) => one(l))).then(moreSystems).then(() => {
@@ -2528,8 +2685,9 @@ async function loadAllLayers(ctx, layerRecords, glyphLayers, scene) {
   function wantPool(gl, records) {
     if (poolOff || !gl.setPool || gl.poolStats() || typeof Worker !== 'function') return;
     if (!records || records.length < POOL_MIN_SGP4) return;
+    // SGP4 sets and two-body elements both (the debris view's 14 604 are `kepler`, internal #551).
     let n = 0;
-    for (const r of records) if (r && r.propagator === 'sgp4') n++;
+    for (const r of records) if (r && (r.propagator === 'sgp4' || r.propagator === 'kepler')) n++;
     if (n < POOL_MIN_SGP4) return;
     import('./propagate/pool.js')
       .then((m) => { if (!gl.poolStats()) gl.setPool(m.createPropagationPool()); })
@@ -2657,8 +2815,9 @@ function applyUrlState(ctx, st) {
   if (st.trip && openTrip(ctx, st)) return;
   // A mission's event (ui/missions.js): it selects its own record, so `at` beside it is not read.
   if (st.event && typeof ctx.wantMissions === 'function') {
-    ctx.wantMissions().then((m) => {
-      if (m && m.openEvent(ctx, st.event)) return;
+    // A known event whose record is in a layer that has not landed is waited for (ui/missions.js openEventWhenReady), not called unknown.
+    ctx.wantMissions().then((m) => (m ? m.openEventWhenReady(ctx, st.event) : false)).then((ok) => {
+      if (ok) return;
       linkNote(ctx, COPY.mission.unknown, ['event']);
       if (st.at) openAt(ctx, st.at);
     });

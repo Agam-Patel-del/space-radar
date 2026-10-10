@@ -35,6 +35,7 @@ import { tonightBest, bestWords, passWords, passNumbers, darkWords, compassShort
 import { passTrack } from '../sky/passes.js';
 import { FOV, DARKNESS_IDS, twilightPhase } from '../sky/skymath.js';
 import { NEBULAE } from '../data/nebulae.js';
+import { SCRUB_BACK_MS, SCRUB_FORWARD_MS } from './timepill.js';
 
 const LAYERS = ['stations', 'visual'];
 const REFRESH_MS = 30 * 60e3;
@@ -49,7 +50,7 @@ export const SAT_FAR_MS = 30 * 24 * 3600e3;
 export const STRIP_KEY_MIN = 10;
 /** Three eyepieces: the width of the round field each shows, in degrees. */
 export const EYEPIECES = { low: 1, medium: 0.5, high: 0.2 };
-const SKY_CULTURES = ['western', 'chinese', 'maori', 'hawaiian'];
+const SKY_CULTURES = ['western', 'chinese', 'maori', 'hawaiian', 'samoan', 'tongan', 'norse', 'boorong'];
 /** Where the "My view" choice is kept: { facing: 'any' | 'n' | 'e' | 's' | 'w', minAltDeg: 0 | 15 | 30 }. */
 export const VIEW_KEY = 'sr.tonight.view';
 
@@ -659,10 +660,28 @@ export function renderTonight(host, ctx) {
     const fields = new Map();
     const fieldRow = row(K.field);
     for (const f of ['eye', 'binoculars', 'telescope']) {
-      fields.set(f, button(fieldRow, K.fields[f], K.fieldNotes[f], () => { if (sky() && sky().setFov) sky().setFov(FOV[f]); }));
+      fields.set(f, button(fieldRow, K.fields[f], K.fieldNotes[f], () => {
+        const s = sky();
+        if (!s || !s.setFov) return;
+        // A planet at the centre: the Telescope frames it with its moons or rings instead of a dot in a flat field (#351).
+        const body = f === 'telescope' && typeof s.bodyAtCentre === 'function' ? s.bodyAtCentre() : null;
+        s.setFov(body ? fovFor(body.fieldDeg) : FOV[f]);
+        // Through the telescope a planet leaves a 1 degree field in minutes: the view keeps it in the
+        // middle (internal #547; sky/skyview.js follow()). A wider field lets go of it.
+        if (typeof s.follow === 'function') {
+          if (body) s.follow(body.id);
+          else if (f !== 'telescope' && s.following) s.follow(null);
+        }
+        paintBar();
+      }));
     }
     const fieldNote = el('p', 'sr-density__note');
     node.appendChild(fieldNote);
+    // "Following Saturn": said while the view is kept on a body, and once when it sets.
+    const followNote = el('p', 'sr-density__note');
+    followNote.hidden = true;
+    followNote.setAttribute('aria-live', 'polite');
+    node.appendChild(followNote);
     // Three eyepieces (internal #351): the round field's own width, whatever the window's shape.
     const eyepieces = new Map();
     const eyeRow = row(K.eyepiece);
@@ -719,12 +738,18 @@ export function renderTonight(host, ctx) {
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
       b.classList.toggle('sr-bracketed', !!on);
     };
+    let lastFollowed = null;
     const paintBar = () => {
       const s = sky();
       const o = s && s.options ? s.options : {};
       const field = s && s.field ? s.field : 'eye';
       for (const [f, b] of fields) press(b, f === field);
       setText(fieldNote, K.fieldNotes[field]);
+      const followed = s && s.following ? s.following : null;
+      const bodyName = (id) => (COPY.sky && COPY.sky.bodies && COPY.sky.bodies[id]) || id;
+      if (followed) { lastFollowed = followed; setText(followNote, t(K.following, { name: bodyName(followed) })); }
+      else if (s && s.followEnded === 'set' && lastFollowed) setText(followNote, t(K.followSet, { name: bodyName(lastFollowed) }));
+      followNote.hidden = !(followed || (s && s.followEnded === 'set' && lastFollowed));
       const fovNow = s && Number.isFinite(s.fovDeg) ? s.fovDeg : FOV.eye;
       for (const [k, b] of eyepieces) press(b, Math.abs(Math.log(fovNow / fovFor(EYEPIECES[k]))) < 0.05);
       // The sky's time: the clock's, and which part of the day or night that is at this place.
@@ -732,6 +757,9 @@ export function renderTonight(host, ctx) {
       const phase = s && s.sun && s.active ? twilightPhase(s.sun.elevationDeg) : null;
       setText(stripTime, phase ? t(K.timeAt, { time: timeText.hhmm(nowMs), phase: K.timePhases[phase] || '' }) : timeText.hhmm(nowMs));
       strip.setAttribute('aria-valuetext', stripTime.textContent);
+      strip.setAttribute('aria-valuemin', String(-Math.round(SCRUB_BACK_MS / 60e3)));
+      strip.setAttribute('aria-valuemax', String(Math.round(SCRUB_FORWARD_MS / 60e3)));
+      strip.setAttribute('aria-valuenow', String(Math.round((nowMs - Date.now()) / 60e3)));
       press(timeNow, ctx.clock.mode === 'live');
       paintTicks(nowMs);
       farNote.hidden = !(Math.abs(nowMs - Date.now()) > SAT_FAR_MS);

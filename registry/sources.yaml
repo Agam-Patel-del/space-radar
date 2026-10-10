@@ -279,6 +279,20 @@ sources:
     terms_url: https://ssd-api.jpl.nasa.gov/
     terms_recorded: 2026-10-05
 
+  # SWITCHED OFF 2026-10-09, AND NOT OURS TO COPY. ESA's terms, read that day on
+  # https://www.esa.int/Services/Terms_and_conditions (to which neo.ssa.esa.int/terms-conditions
+  # defers): "ESA does not grant the right to resell or redistribute any information, documents,
+  # images or material from its website or to compile or create derivative works from material on
+  # its website." The harvester saved this list and the site served it as
+  # /data/v1/esa-neocc-close.json from 2026-09 until that day (internal #370). No card ever read it:
+  # the "second opinion" below was a plan, and the close approaches the app draws are JPL's CNEOS
+  # (jpl-cad above), which NASA lets us keep a copy of and which the card credits by name.
+  # `enabled: false` means, everywhere: not fetched (harvest/run.py), not published
+  # (scripts/refresh-snapshots.sh drops a disabled source's file and publishes its manifest row
+  # as `skipped`, with no stamps), not saved
+  # for offline use (scripts/save_offline_data.py) and not in a release zip
+  # (scripts/build_release.py refuses one). tests/test_not_ours_to_copy.py holds all four.
+  # The row stays so that the reason stays; switch it back on only with ESA's written permission.
   - id: esa-neocc-close
     url: https://neo.ssa.esa.int/PSDB-portlet/download?file=esa_upcoming_close_app
     auth: none
@@ -287,8 +301,7 @@ sources:
     freshness_max: 168h
     parser: esa_neocc
     outputs: [close-approaches-esa.json]
-    # The second opinion. Where ESA and JPL disagree by more than 10% the card shows both
-    # and names them; two sources disagreeing is information, not an error to hide.
+    enabled: false
     attribution: "Close approaches: ESA NEOCC"
     licence: "All rights reserved by ESA; no reuse licence found, so the saved copy is not cleared for redistribution"
     terms_url: https://neo.ssa.esa.int/
@@ -348,11 +361,86 @@ sources:
     cadence: 15m
     freshness_max: 3h
     parser: swpc_ovation
-    outputs: [aurora.png, aurora-summary.json]
+    # `aurora.png` was listed first until 2026-10-09 and nothing ever wrote it: the parser passes NOAA's
+    # grid through whole (the saved copy is swpc-ovation.json, 726 kB on 2026-10-09). The harvester reads
+    # this row at deploy, so the change reaches it with the next redeploy (internal #192 item 5, #552).
+    outputs: [aurora-summary.json]
     attribution: "Aurora forecast: NOAA SWPC"
     licence: "US Government work, public domain"
     terms_url: https://www.weather.gov/disclaimer
     terms_recorded: 2026-10-05
+
+  # The three feeds a browser used to read straight from the publisher, now with a saved copy (internal #525,
+  # #553): the page asks our copy first and the publisher only when there is none (a source with `browser: true`
+  # is read live as a fallback; data/sources.js load()). One request per visitor to our own host instead of to
+  # NASA's and NOAA's, and the layers draw when the publisher is down. Two EONET rows because the page asks
+  # two questions (data/eonet.js EONET_URLS, the same URLs: tests/test_eonet.mjs holds them together).
+  # Terms, READ 2026-10-09: NASA, "generally are not subject to copyright in the United States"
+  # (https://www.nasa.gov/nasa-brand-center/images-and-media/); NOAA, "in the public domain ... and may be used
+  # without charge for any lawful purpose" (https://www.weather.gov/disclaimer).
+  - id: eonet-fires
+    url: https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=wildfires&days=30
+    auth: none
+    browser: true
+    cadence: 1h
+    freshness_max: 12h
+    parser: eonet
+    outputs: [eonet-fires.json]
+    attribution: "Fires, volcanoes and sea ice: NASA EONET"
+    licence: "NASA content, generally not subject to copyright in the United States (read 2026-10-09)"
+    terms_url: https://www.nasa.gov/nasa-brand-center/images-and-media/
+    terms_recorded: 2026-10-09
+
+  - id: eonet-volcanoes-ice
+    url: https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=volcanoes,seaLakeIce
+    auth: none
+    browser: true
+    cadence: 1h
+    freshness_max: 12h
+    parser: eonet
+    outputs: [eonet-volcanoes-ice.json]
+    attribution: "Fires, volcanoes and sea ice: NASA EONET"
+    licence: "NASA content, generally not subject to copyright in the United States (read 2026-10-09)"
+    terms_url: https://www.nasa.gov/nasa-brand-center/images-and-media/
+    terms_recorded: 2026-10-09
+
+  # Today's sunspot groups (data/sunregions.js). Measured by that file's header: CORS open, `max-age=60`.
+  - id: swpc-solar-regions
+    url: https://services.swpc.noaa.gov/json/solar_regions.json
+    auth: none
+    browser: true
+    cadence: 1h
+    freshness_max: 12h
+    parser: swpc_solar_regions
+    outputs: [solar-regions.json]
+    attribution: "Sunspot groups: NOAA SWPC"
+    licence: "US Government work, public domain (read 2026-10-09)"
+    terms_url: https://www.weather.gov/disclaimer
+    terms_recorded: 2026-10-09
+
+  # The wind ten metres above the ground, for the Earth overlay (scene/wind.js; internal #146, #362, #552).
+  # NOAA/NCEP's Global Forecast System through the PacIOOS ERDDAP server (University of Hawaii, a NOAA IOOS
+  # regional association), dataset `ncep_global`: one forecast hour (`{hour3}`, filled by harvest/run.py
+  # expand_url with the three-hourly hour at or before the run), every fifth degree, 37 x 72 points, 168 818 B
+  # of JSON on 2026-10-09. The server answers `Access-Control-Allow-Origin: *`, but it is one university
+  # server that took 35 s and returned 404 on 2026-10-07 (data/wind.js), so a visitor's browser does not
+  # call it: `browser: false`, the page reads this saved copy and, with no copy, offers no wind.
+  # Terms, READ 2026-10-09 in the dataset's own attributes (pae-paha.pacioos.hawaii.edu/erddap/griddap/
+  # ncep_global.das, `license`): "The data may be used and redistributed for free but is not intended for
+  # legal use, since it may contain inaccuracies." Creator NOAA National Centers for Environmental
+  # Prediction; publisher PacIOOS.
+  - id: wind
+    url: https://pae-paha.pacioos.hawaii.edu/erddap/griddap/ncep_global.json?ugrd10m%5B({hour3})%5D%5B(-90):10:(90)%5D%5B(0):10:(355)%5D,vgrd10m%5B({hour3})%5D%5B(-90):10:(90)%5D%5B(0):10:(355)%5D
+    auth: none
+    browser: false
+    cadence: 3h
+    freshness_max: 12h
+    parser: wind
+    outputs: [wind.json]
+    attribution: "Wind: NOAA/NCEP Global Forecast System, through PacIOOS ERDDAP (University of Hawaii)"
+    licence: "May be used and redistributed for free, not for legal use (the dataset's own licence attribute, read 2026-10-09)"
+    terms_url: https://pae-paha.pacioos.hawaii.edu/erddap/griddap/ncep_global.html
+    terms_recorded: 2026-10-09
 
   # Tropical cyclones, worldwide, from GDACS (the UN / European Commission disaster alert system,
   # run by the EC Joint Research Centre). MEASURED 2026-09-28: `Access-Control-Allow-Origin: *`,

@@ -79,7 +79,7 @@ import { stage } from '../scene/stage.js';
 import { icon } from './icons.js';
 import { overlayLine, legendNode, paintLegend } from './overlaylegend.js';
 import { systemOfRecordId, phaseIsMeasured, faceLineOf } from '../scene/systems.js';
-import { generatedLine, planetFacts, starRows } from './systemcard.js';
+import { generatedLine, planetFacts, starRows, glowRows } from './systemcard.js';
 import { setSystemRows } from './cardfacts.js';
 import { liveBlock, paintLive, sparkBlock, crewBlock, linkNodes, smallBodyFromLine, skyControls } from './cardextras.js';
 import { upForWords } from './cardlive.js';
@@ -91,11 +91,11 @@ import {
   DEG, meta, pick, pickNumber, pickTime, displayName, klassOf, isEarthFrame, frameWorld, worldName,
   positionAt, measure, heliocentricEarth, PASS_NO_OBSERVER, PASS_NOT_APPLICABLE, PASS_NONE,
   PASS_ERROR, PASS_OK, standsStill, nextPass, roughly, stormAdvisoryAgo, stormStatusKey, isWorld,
-  whyLine, endedWords, rightNowRows, placesMod, ensurePlaces, rangeLabel, nearEarthOnEllipse,
+  whyLine, endedWords, pathEndedWords, rightNowRows, placesMod, ensurePlaces, rangeLabel, nearEarthOnEllipse,
   honestyLine, placesReady,
 } from './cardfacts.js';
 export {
-  stormAdvisoryAgo, stormAdvisoryText, earthEventRows, whyLine, endedWords, ensurePlaces,
+  stormAdvisoryAgo, stormAdvisoryText, earthEventRows, whyLine, endedWords, pathEndedWords, ensurePlaces,
   belowWords, TAG_READOUTS, TAG_HONESTY_MAX, shortHonesty, splitReadout, tagLines, classLine,
   NEAR_EARTH_KM, nearEarthOnEllipse, honestyClause, honestyLine,
 } from './cardfacts.js';
@@ -111,7 +111,13 @@ const generatedMember = (record) => {
 };
 setSystemRows({
   planet: (record) => { const m = generatedMember(record); return m && m.planet ? planetFacts(m.system, m.planet) : null; },
-  star: (record) => { const m = generatedMember(record); return m && !m.planet ? starRows(m.system) : null; },
+  star: (record) => {
+    const m = generatedMember(record);
+    if (m) return m.planet ? null : starRows(m.system);
+    // A hand-listed system's star: not the generated rows, but its glow is drawn wider all the same.
+    const h = record && systemOfRecordId(record.id);
+    return h && !h.planet && h.system.full ? glowRows() : null;
+  },
 });
 
 const HOST_ID = 'sr-card';
@@ -143,7 +149,7 @@ function ensureHost() {
   if (host && host.isConnected) return host;
   host = document.getElementById(HOST_ID);
   if (!host) {
-    host = el('aside', 'sr-card');
+    host = el('div', 'sr-card');
     host.id = HOST_ID;
     document.body.appendChild(host);
   }
@@ -1515,7 +1521,9 @@ export function actionButtons(record, ctx, m) {
     // Nowhere to fly: say why on the switched-off control (docs/ui-guide.md §3, the standard
     // states). An ended craft names its last day; its mission's events below are the way there.
     const ended = endedWords(record, m);
+    const pathEnds = ended ? null : pathEndedWords(record, m);
     if (ended) { fly.title = t(A.flyEnded, { date: ended }); fly.setAttribute('aria-label', fly.title); }
+    else if (pathEnds) { fly.title = t(A.flyPathEnded, { date: pathEnds }); fly.setAttribute('aria-label', fly.title); }
     else if (fly.disabled) fly.title = A.flyNowhere;
     buttons.push(fly);
     const see = actionButton('see', A.seeShort, A.seeFromHereTitle, 'telescope', () => seeFromHere(record, ctx));
@@ -2416,7 +2424,7 @@ function moreSections(record, ctx, m, passInfo, rows, time, namedAbove, opts) {
  */
 function distanceCurve(record, ctx, m) {
   const klass = klassOf(record);
-  if (klass === 'world' || klass === 'site' || m.frame !== 'sun-inertial' || !Number.isFinite(m.tMs) || endedWords(record, m)) return null;
+  if (klass === 'world' || klass === 'site' || m.frame !== 'sun-inertial' || !Number.isFinite(m.tMs) || endedWords(record, m) || pathEndedWords(record, m)) return null;
   try {
     return sparkBlock(record, earthDistanceAt(record, ctx), m.tMs, ctx,
       (min) => nearEarthOnEllipse(record, { tMs: min.tMs, distEarthKm: min.km }));
@@ -2476,9 +2484,11 @@ function render(record, ctx, opts = {}) {
   // An ended craft after its end has no numbers to lead with: three dashes said nothing (seen
   // 2026-10-07 on Cassini's card). One line says when it ended instead (internal #424).
   const ended = endedWords(record, m);
-  const heroes = ended ? [] : heroNumbers(record, m, rows);
+  const pathEnds = ended ? null : pathEndedWords(record, m);
+  const heroes = ended || pathEnds ? [] : heroNumbers(record, m, rows);
   if (heroes.length) body.appendChild(heroBlock(heroes));
   if (ended) body.appendChild(el('p', 'sr-card__sentence sr-card__ended', t(COPY.card.endedLine, { date: ended })));
+  else if (pathEnds) body.appendChild(el('p', 'sr-card__sentence sr-card__ended', t(COPY.card.pathEndedLine, { date: pathEnds })));
 
   // 2b. a launch within a day counts down (public #289, ui/countdown.js): in the clock's own time,
   // as the scene is, with Launch Library's status and how old it is.
@@ -2614,6 +2624,7 @@ export function sunSpotsLine(ctx) {
   try { st = ctx.sunDetail.state(); } catch { st = null; }
   if (!st || !(st.spots > 0) || !Number.isFinite(st.observedMs) || !COPY.sun) return null;
   const day = new Date(st.observedMs).toISOString().slice(0, 10);
+  if (st.pairs > 0 && COPY.sun.spotsPaired) return t(st.spots === 1 ? COPY.sun.spotsPairedOne : COPY.sun.spotsPaired, { n: fmt.int(st.spots), pairs: fmt.int(st.pairs), date: day });
   return t(st.spots === 1 ? COPY.sun.spotsOne : COPY.sun.spots, { n: fmt.int(st.spots), date: day });
 }
 

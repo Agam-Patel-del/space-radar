@@ -193,7 +193,7 @@ SITE_SHAPES = {"lander", "rover", "lunar-module"}
 # ship. When one of these is matched to a reference, its id comes out of this set -- the check
 # below refuses a set member that has started citing something, so the set cannot go stale.
 SITE_UNCITED = "uncited"
-UNCITED_SITES = frozenset({"apollo-11", "apollo-17", "change-4", "jezero", "elysium", "utopia"})
+UNCITED_SITES = frozenset({"apollo-11", "apollo-17", "change-4", "jezero", "utopia"})
 # Luna 2 hit the Moon on 13 September 1959. A landing date before it is a typo, not a landing.
 FIRST_ARRIVAL = datetime.date(1959, 9, 13)
 
@@ -2635,6 +2635,17 @@ def check_stars_notable(exotics: list) -> list:
             phrase = time_relative(why)
             if phrase:
                 fail(where, f"`why:` says {phrase!r}, which is true on a date and not forever")
+        if r.get("radius_suns") is not None:
+            # A width an interferometer measured (internal #412): the radius, its error, the temperature and the page it was read on.
+            # The temperature is optional (a paper that measures a width, not a temperature, leaves it out and the
+            # disc keeps its colour-index estimate), but it comes WITH its error or not at all.
+            pos = lambda k: isinstance(r.get(k), (int, float)) and not isinstance(r.get(k), bool) and r.get(k) > 0  # noqa: E731
+            has_teff = r.get("teff_k") is not None or r.get("teff_err_k") is not None
+            ok = pos("radius_suns") and pos("radius_err_suns") and (not has_teff or (pos("teff_k") and pos("teff_err_k")))
+            if not ok or r["radius_err_suns"] >= r["radius_suns"] or (has_teff and not (2000 <= r["teff_k"] <= 50000)):
+                fail(where, "`radius_suns` and `radius_err_suns` must be positive numbers, the error under the radius; `teff_k` and `teff_err_k`, when given, both")
+            if not STAR_SOURCE.match(str(r.get("physical_source") or "")):
+                fail(where, "`physical_source:` must be the page and the day it was read, \"https://... (read YYYY-MM-DD)\"")
         if not STAR_SOURCE.match(str(r.get("source") or "")):
             fail(where, "`source:` must be the page and the day it was read: "
                         "\"https://... (read YYYY-MM-DD)\" -- a line with no source is a rumour")
@@ -3363,6 +3374,9 @@ def check_oddities(doc: dict, world_ids: set, sites: list) -> None:
 
 
 errors: list[str] = []
+# A registry-only copy (no site/js/main.js) may skip the list-file check, but only by saying so.
+NO_SITE_MODULES = os.environ.get("CHECK_REGISTRY_NO_SITE") == "1"
+LIST_EXPORTS_SKIPPED: list[str] = []
 
 
 def fail(where: str, msg: str) -> None:
@@ -3437,6 +3451,65 @@ def budget_reader_text() -> str | None:
             if f.is_file() and f.suffix in (".py", ".mjs", ".js") and rel not in BUDGET_NOT_READERS:
                 parts.append(f.read_text(encoding="utf-8", errors="replace"))
     return "\n".join(parts)
+
+
+ASSET_SOURCE_FIELDS = ("id", "name", "match", "url", "licence", "licence_read", "licence_url", "account", "cost")
+
+
+def check_asset_sources() -> None:
+    """Spec 0063 task 1 (internal #210, #556): every asset row names a registered source.
+
+    registry/asset_sources.yaml lists the sources; a row of registry/models.yaml (models, textures, data,
+    marks, real_models) or registry/audio.yaml whose `source:` begins with none of their `match:`
+    prefixes is refused. A source with no quoted licence sentence says why in `licence_note`, and one
+    with a quote carries the day it was read.
+    """
+    path = REG / "asset_sources.yaml"
+    if not path.exists():
+        fail("asset_sources.yaml", "is missing: spec 0063 task 1 wants every asset's source written down")
+        return
+    doc = load(path) or {}
+    rows = doc.get("sources")
+    if not isinstance(rows, list) or not rows:
+        fail("asset_sources.yaml", "has no `sources:` list")
+        return
+    seen = set()
+    prefixes = []
+    for r in rows:
+        where = f"asset_sources.yaml[{r.get('id') if isinstance(r, dict) else '?'}]"
+        if not isinstance(r, dict):
+            fail("asset_sources.yaml", "has a row that is not a mapping")
+            continue
+        for f in ASSET_SOURCE_FIELDS:
+            if r.get(f) in (None, [], ) or (f != "licence_read" and r.get(f) == ""):
+                fail(where, f"has no `{f}:`")
+        if r.get("id") in seen:
+            fail(where, "is listed twice")
+        seen.add(r.get("id"))
+        if r.get("account") not in ("none", "free", "paid"):
+            fail(where, "`account:` is none, free or paid")
+        if r.get("licence_read"):
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(r.get("checked", ""))):
+                fail(where, "quotes a licence sentence but has no `checked: YYYY-MM-DD`: a quote carries the day it was read")
+            if not str(r.get("licence_url", "")).startswith("https://"):
+                fail(where, "quotes a licence sentence from a page that is not an https URL")
+        elif not r.get("licence_note"):
+            fail(where, "has no quoted licence sentence and no `licence_note:` saying why")
+        for m in r.get("match") or []:
+            prefixes.append(str(m))
+    models = load(REG / "models.yaml") or {}
+    audio = load(REG / "audio.yaml") or {}
+    groups = [(f"models.yaml[{k}]", models.get(k) or []) for k in ("models", "textures", "data", "marks", "real_models")]
+    groups.append(("audio.yaml[audio]", audio.get("audio") or []))
+    for label, items in groups:
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            src = str(it.get("source") or "").strip()
+            if not src:
+                continue  # a missing source is another check's refusal
+            if not any(src.startswith(p) for p in prefixes):
+                fail(f"{label}[{it.get('id')}]", f"has a `source:` ({src[:70]!r}) that no row of registry/asset_sources.yaml matches: write the source down there first (spec 0063 task 1)")
 
 
 def check_budgets() -> list:
@@ -4693,6 +4766,33 @@ def main() -> int:
             fail(where, "no card template")
         if not l.get("select"):
             fail(where, "no `select:` rule -- a layer that selects nothing is a layer nobody sees")
+        # A hand-kept list is named by where it IS (internal #413: three rows named
+        # registry/lists/*.yaml, a folder that never existed; the lists are tables in the layer's
+        # own module). `<file>#<EXPORT>`: the file exists and exports that name.
+        sel = l.get("select")
+        for key in ("list", "or_list"):
+            ref = sel.get(key) if isinstance(sel, dict) else None
+            if ref is None:
+                continue
+            path, _, name = str(ref).partition("#")
+            target = ROOT / path
+            # A copy of the registry without the site's modules (tests/test_growth.py makes one) has
+            # nothing to look the table up in: the form is still held there, the file is not. That
+            # skip used to be silent, which made a tree that LOST site/js/main.js pass this check.
+            # Now it is a choice the caller makes out loud (CHECK_REGISTRY_NO_SITE=1, set by
+            # tests/test_growth.py, the only such caller), counted in the closing line; without it a
+            # missing main.js is a failure.
+            if name and not (ROOT / "site" / "js" / "main.js").is_file():
+                if NO_SITE_MODULES:
+                    LIST_EXPORTS_SKIPPED.append(f"{where}.select.{key}")
+                    continue
+                fail(where, f"`select: {{{key}: {ref}}}` cannot be looked up: site/js/main.js is missing from this tree. "
+                            "A registry-only copy says so with CHECK_REGISTRY_NO_SITE=1")
+                continue
+            if not name or not target.is_file():
+                fail(where, f"`select: {{{key}: {ref}}}` must be `<file>#<EXPORT>` naming a file that exists")
+            elif not re.search(rf"^export const {re.escape(name)}\b", target.read_text(encoding="utf-8"), re.M):
+                fail(where, f"`select: {{{key}: {ref}}}`: {path} does not export `{name}`")
         # `load: on-demand` (2026-09-22): the layer is fetched when its box is ticked, never at
         # boot. Reserved for a file too big to fetch for everybody: the active catalogue is 7 MB.
         # A small layer marked this way would just be a layer that hides its own data.
@@ -4860,6 +4960,7 @@ def main() -> int:
     check_oddities(oddities_doc, world_ids, sites)
     systems = check_systems()
     generated_systems = check_generated_systems()
+    check_asset_sources()
     budgets = check_budgets()
     audio = check_audio()
     check_autopilot({l.get("id") for l in layers})
@@ -5114,6 +5215,8 @@ def main() -> int:
         # a figure a human copies out of a comment drifts, and a figure the check prints does not.
         f"{sum(1 for r in rockets if r.get('livery') == 'unknown')} of {len(rockets)} "
         f"with no sourced livery)"
+        + (f"; NOT CHECKED, no site/js/main.js and CHECK_REGISTRY_NO_SITE=1: {len(LIST_EXPORTS_SKIPPED)} hand-kept list export(s)"
+           if LIST_EXPORTS_SKIPPED else "")
     )
     return 0
 

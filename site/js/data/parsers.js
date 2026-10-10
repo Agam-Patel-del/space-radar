@@ -1060,9 +1060,26 @@ function jdToMs(jd) {
  * z/r = 0.58, i.e. 35 deg above the ecliptic, which is where Voyager 1 is; in the equatorial frame
  * that ratio would read very differently.
  *
- * The rows sit between $$SOE and $$EOE as CSV: JDTDB, calendar date, X, Y, Z, VX, VY, VZ.
+ * The rows sit between $$SOE and $$EOE as CSV: JDTDB (or JDUT), calendar date, X, Y, Z, VX, VY, VZ.
  * A text with no $$SOE block (Horizons refusing a window, an unknown id) yields [].
+ *
+ * THE TIME SCALE (internal #424, #552): a request without TIME_TYPE answers in TDB, 69.184 s ahead of
+ * UTC, and `tMs` is that JD read as UTC. A request with TIME_TYPE='UT' (harvest/lists/horizons-ids.yaml,
+ * from the harvester redeploy of 2026-10) answers JDUT and `tMs` is true UTC. horizonsTimeScale() reads
+ * which from the table's own header, so the snapshots already saved and the new ones both read right.
  */
+export function horizonsTimeScale(text) {
+  if (typeof text !== 'string') return 'TDB';
+  const s = text.indexOf('$$SOE');
+  const head = s < 0 ? text : text.slice(0, s);
+  // The column-name line only. Horizons pads the names: the real UT header reads "JDUT ," and
+  // "Calendar Date (UT )" (fetched 2026-10-09, tests/fixtures/horizons/ut-and-tdb.json); the first
+  // version of this line wanted "JDUT," and read every real UT table as TDB, taking 69 s off twice.
+  const col = /^\s*JD[A-Za-z]*\s*,\s*Calendar Date[^\n]*$/m.exec(head);
+  if (col && /JDUT|\(UT~?\s*\)/.test(col[0]) && !/JDTDB|\(TDB\s*\)/.test(col[0])) return 'UT';
+  return 'TDB'; // JDTDB, or an older fixture with no header at all: as it always was
+}
+
 export function horizonsSamples(text) {
   if (typeof text !== 'string') return [];
   const s = text.indexOf('$$SOE');
@@ -1117,7 +1134,7 @@ export function parseHorizonsVectors(body, base = []) {
         out.push(rec);
         continue;
       }
-      out.push(orbiterFromHorizons(rec, samples));
+      out.push(orbiterFromHorizons(rec, samples, horizonsToUtcMs(text)));
       continue;
     }
     // And the other way round: a table about some other centre is not a heliocentric position.
@@ -1170,6 +1187,10 @@ const NAIF_CENTRE = { sun: 10, earth: 399, moon: 301, mars: 499, jupiter: 599 };
  * 3.4 km/s, 235 km in 69 s, and Juno at perijove 55.5 km/s, 3 840 km.
  */
 export const TDB_MINUS_UTC_MS = 69184;
+/** What to take off a Horizons table's times to have UTC: 69.184 s for a TDB table, nothing for a UT one. */
+export function horizonsToUtcMs(text) {
+  return horizonsTimeScale(text) === 'UT' ? 0 : TDB_MINUS_UTC_MS;
+}
 
 /**
  * The step the `arc` sentences in data/sample.js were measured at. A snapshot with a coarser step
@@ -1190,8 +1211,8 @@ export function horizonsCentre(text) {
  * `measured`: between the six-hourly states nobody measured it, and the card says how close the
  * arcs stay (`orbitKnown`, from the row's own measured sentence).
  */
-function orbiterFromHorizons(rec, samples) {
-  const utc = samples.map((s) => ({ ...s, tMs: s.tMs - TDB_MINUS_UTC_MS }));
+function orbiterFromHorizons(rec, samples, shiftMs = TDB_MINUS_UTC_MS) {
+  const utc = samples.map((s) => ({ ...s, tMs: s.tMs - shiftMs }));
   const first = utc[0].tMs;
   const last = utc[utc.length - 1].tMs;
   const { extrapolateMs, ...rest } = rec;
@@ -1500,6 +1521,13 @@ const DSO_DRAWN = {
   'ic-2602': { departure: GATHERED },
 };
 
+/** Minor over major, for a galaxy the catalogue measures as clearly longer than wide (under 0.8) with its angle; else null. */
+export function ellipseRatio(o) {
+  if (!o || o.typeCode !== 'G' || !(o.majAxArcmin > 0) || !(o.minAxArcmin > 0) || !Number.isFinite(o.posAngDeg)) return null;
+  const r = o.minAxArcmin / o.majAxArcmin;
+  return r >= 0.05 && r < 0.8 ? r : null;
+}
+
 export function parseDso(doc) {
   const list = doc && Array.isArray(doc.objects) ? doc.objects : [];
   const out = [];
@@ -1512,6 +1540,14 @@ export function parseDso(doc) {
     if (o.common && o.name !== o.common) aliases.push(o.common);
     // A row drawn as a shape may also say what it is called (DSO_DRAWN): the table's name stays an alias.
     const { name: ownName, ...drawn } = DSO_DRAWN[o.id] || {};
+    // A galaxy whose catalogue gives a minor axis and a position angle and is visibly not round is drawn as the
+    // ellipse it measures (scene/dsoglow.js glowFor, internal #166); the card says so in the words M32's does.
+    const shapeRatio = ellipseRatio(o);
+    if (shapeRatio && !DSO_DRAWN[o.id]) {
+      drawn.drawsAs = 'variant';
+      drawn.drawnName = `${o.common || o.name}, as an ellipse`;
+      drawn.departure = `a soft glow ${o.majAxArcmin}\u2032 by ${o.minAxArcmin}\u2032 turned ${o.posAngDeg}\u00b0 east of north, as OpenNGC lists it, seen flat from our side; not a picture of it`;
+    }
     out.push({
       id: `dso-${o.id}`,
       name: ownName || o.common || o.name,
@@ -1534,6 +1570,8 @@ export function parseDso(doc) {
         distLyHigh: o.distLyHigh ?? null,
         sizeLy,
         majAxArcmin: o.majAxArcmin ?? null,
+        minAxArcmin: o.minAxArcmin ?? null,
+        posAngDeg: Number.isFinite(o.posAngDeg) ? o.posAngDeg : null,
         mag: o.vmag ?? null,
         why: o.why || null,
         distanceSource: o.distanceSource || null,

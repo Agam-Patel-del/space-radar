@@ -255,6 +255,76 @@ const auckland = place(-36.8485, 174.7633);
   const med = (xs) => xs.slice().sort((a, b) => a - b)[xs.length >> 1];
   notes.push(`predictPasses() for seven days of the ISS: median ${med(cold).toFixed(0)} ms cold, ${med(warm).toFixed(2)} ms reusing the hour's list`);
   check(med(warm) < 5, `a second ask within the hour reuses the list (${med(warm).toFixed(2)} ms)`);
+  // The Coming up list asks every minute (ui/next.js): the day of passes is worked out once a quarter of
+  // an hour for one place and one set of elements, not each time (a 1.5 to 3.4 s frame a minute, 2026-10-10).
+  {
+    const { PASS_MEMO_MS, passWorkCount } = await import(join(JS, 'data/events.js'));
+    const from = Date.parse('2026-09-13T16:00:00Z');
+    const rows = (ms, obs = madridObs, recs = stations) => buildEvents(recs, ms, { observer: obs }).filter((e) => e.type === 'station-pass');
+    const n0 = passWorkCount();
+    let t0 = performance.now(); const first = rows(from); const coldMs = performance.now() - t0;
+    t0 = performance.now(); const again = rows(from + 60e3); const warmMs = performance.now() - t0;
+    check(first.length > 0, 'the list has a pass of the station over Madrid in the day after 13 September 16:00');
+    check(again.length === first.length && again.every((e, i) => e.t === first[i].t), 'a minute later the same passes, at the same times');
+    check(passWorkCount() === n0 + 1, `a minute later the day of passes is not worked out again (${passWorkCount() - n0} time)`);
+    check(PASS_MEMO_MS === 15 * 60e3, 'the passes are kept a quarter of an hour');
+    const moved = rows(from + 120e3, { ...madridObs, latDeg: 60, latRad: 60 * Math.PI / 180 });
+    check(passWorkCount() === n0 + 2 && JSON.stringify(moved.map((e) => e.t)) !== JSON.stringify(first.map((e) => e.t)), 'another place is another list');
+    rows(from + 180e3); rows(from + 180e3 + PASS_MEMO_MS + 1);
+    check(passWorkCount() === n0 + 4, 'back at the first place, and then past the quarter hour: worked out each time');
+    rows(from);
+    check(passWorkCount() === n0 + 5, 'a clock put back works the passes out afresh');
+    check(rows(from + 26 * 3600e3 - 1).length >= 0 && rows(from + 6 * 60e3).every((e) => e.t > from - 3600e3), 'no row of the kept list is from before the list');
+    notes.push(`a day of station passes for the Coming up list: ${coldMs.toFixed(0)} ms, ${warmMs.toFixed(2)} ms a minute later`);
+  }
+  // 7b. The passes off the main thread (internal #562): a runner is handed in, the list is not blocked ------------
+  {
+  const { usePassRunner, onPassesReady, passWorkCount } = await import(join(JS, 'data/events.js'));
+  const { runPasses } = await import(join(JS, 'sky/passworker.js'));
+  const { runPassesSliced, SLICE } = await import(join(JS, 'sky/passclient.js'));
+  const from = Date.parse('2026-09-13T16:00:00Z');
+  const obs = { ...madridObs, latDeg: 52.2, latRad: 52.2 * Math.PI / 180, lonDeg: 0.1, lonRad: 0.1 * Math.PI / 180 };
+  const rowsOf = (ms) => buildEvents(stations, ms, { observer: obs }).filter((e) => e.type === 'station-pass');
+  const reference = rowsOf(from);                       // worked out in place, no runner
+  const asked = [];
+  usePassRunner((msg) => { asked.push(msg); return Promise.resolve(runPasses(msg)); });
+  const obs2 = { ...obs, latDeg: 52.3, latRad: 52.3 * Math.PI / 180 };
+  let ready = 0;
+  const off = onPassesReady(() => { ready += 1; });
+  const n0 = passWorkCount();
+  const before = buildEvents(stations, from, { observer: obs2 }).filter((e) => e.type === 'station-pass');
+  check(before.length === 0 && asked.length === 1, 'with a runner the first list has no passes yet and the day of passes was asked of it, once');
+  buildEvents(stations, from + 1000, { observer: obs2 });
+  check(asked.length === 1, 'asking again while the answer is on its way does not ask twice');
+  await new Promise((r) => setTimeout(r, 20));
+  check(ready === 1, 'the list is told when the answer is in');
+  const after = buildEvents(stations, from, { observer: obs2 }).filter((e) => e.type === 'station-pass');
+  // A catalogue that lands a moment later (other elements, the same place): the rows stay while the new answer
+  // is on its way, each with the record the catalogue holds now; a new place starts from nothing.
+  {
+    // The same satellites with elements a breath newer: another key, as when a fresher catalogue lands.
+    const fewer = stations.map((r) => (r.satrec ? { ...r, satrec: { ...r.satrec, jdsatepoch: r.satrec.jdsatepoch + 1e-6 } } : { ...r }));
+    const kept = buildEvents(fewer, from + 3000, { observer: obs2 }).filter((e) => e.type === 'station-pass');
+    const ids = new Set(fewer.map((r) => r.id));
+    const want = after.filter((e) => ids.has(e.record.id)).length;
+    check(asked.length === 2 && kept.length === want && want > 0, `a second catalogue for the same place asks again and keeps the rows meanwhile (${kept.length} of ${want}, asked ${asked.length})`);
+    check(kept.every((e) => fewer.includes(e.record)), 'each kept row holds the record of the catalogue as it is now');
+    const moved = buildEvents(fewer, from + 3500, { observer: { ...obs2, lonDeg: 9, lonRad: 9 * Math.PI / 180 } }).filter((e) => e.type === 'station-pass');
+    check(moved.length === 0, 'another place does not borrow them');
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  usePassRunner(null);
+  const inPlace = buildEvents(stations, from + 2000, { observer: { ...obs2, altKm: 0.001 } }).filter((e) => e.type === 'station-pass');
+  check(after.length > 0 && after.length === buildEvents(stations, from, { observer: obs2 }).filter((e) => e.type === 'station-pass').length, 'after the answer the passes are in the list');
+  check(asked[0].records.every((r) => r.satrec && r.id !== undefined) && asked[0].hours === 24, 'the message carries plain records and 24 hours');
+  check(passWorkCount() >= n0 + 1, 'the work is counted');
+  check(reference.length > 0 && inPlace.length > 0, 'without a runner the passes are worked out in place as before');
+  off();
+  const sliced = await runPassesSliced(asked[0], (fn) => fn());
+  const whole = runPasses(asked[0]);
+  const key = (ps) => ps.map((p) => `${p.recordId}@${p.startMs}`).sort().join();
+  check(SLICE >= 1 && key(sliced.passes) === key(whole.passes) && whole.passes.length > 0, `worked out in slices of ${SLICE} records the passes are the same ${whole.passes.length}`);
+  }
 }
 
 // 8. The nearest-city helper -------------------------------------------------------------------------

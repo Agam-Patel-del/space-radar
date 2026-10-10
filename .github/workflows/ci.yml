@@ -193,6 +193,10 @@ jobs:
         run: node tests/test_objectnow.mjs
       - name: "The KTX2 plan, its flags and GPU bytes, run against a fake encoder (internal #156)"
         run: python3 tests/test_ktx2_plan.py
+      - name: "The AVIF trial finds the lowest quality at the SSIM floor, for both codecs (internal #530; skips without Pillow's AVIF)"
+        run: python3 tests/test_avif_trial.py
+      - name: "the Milky Way shader's spike cut takes the baked stars out of the 2k panorama and keeps its glow (internal #547; skips without NumPy)"
+        run: python3 tests/test_milkyway_opening.py
       - name: The walk notices another project's headless Chrome (internal #460)
         run: node tests/test_chrome_quiet.mjs
       - name: The prepared cloud workflow stays minimal (internal #139)
@@ -316,6 +320,10 @@ jobs:
         run: node tests/test_far_bodies.mjs
       - name: The Now moment guesses a place and says so
         run: node tests/test_guessplace.mjs
+      # A merge marker in a tool (tools/cdp.mjs on 2026-10-08 carried one and no probe could start) is a
+      # syntax error; `node --check` finds it without running anything (internal #472, #550).
+      - name: Every tool under tools/ parses
+        run: for f in tools/*.mjs; do node --check "$f" || exit 1; done
       - name: Visiting-vehicle shapes build inside budget and match the right names
         run: node tests/test_station_shapes.mjs
       # A fast device earns more models, one at a time while the camera is still, and gives them
@@ -409,6 +417,10 @@ jobs:
         run: node tests/test_autopilot_trip.mjs
       - name: "The reel when the picture is not there: a lost context holds the trip, a failed map is passed over (internal #448)"
         run: node tests/test_autopilot_holds.mjs
+      - name: "The hero layer gives every geometry back over laps of the strangest-things records (internal #546)"
+        run: node tests/test_hero_dispose.mjs
+      - name: "Keep for offline: every trip's file list is real, in a folder the worker keeps, fetched three at a time (internal #551)"
+        run: node tests/test_keeptrip.mjs
       - name: "Every flight of a trip ends in its own time: slow frames, a taken camera, a lost arrival, the way home (internal #322, #304)"
         run: node tests/test_trip_flight_ends.mjs
       # Spec 0068 task 1: the trip's picture under its card and over its intro, lazy and after the
@@ -435,6 +447,14 @@ jobs:
         run: node tests/test_touch_targets.mjs
       - name: "A year in a minute: four worlds on the Sun's stage, drawn true, at 525 600"
         run: node tests/test_year_trip.mjs
+      - name: "An Earth data map's key is one line in a phone's top bar while the sheet is at its peek (internal #386)"
+        run: node tests/test_overlay_key_phone.mjs
+      - name: "A trip's stop card is not repainted as the object's own card when a mission lands late"
+        run: node tests/test_stop_card_kept.mjs
+      - name: "A reel's caption has room for its honesty note at 1440 x 900"
+        run: node tests/test_reel_caption.mjs
+      - name: "The planets' paths are drawn two pixels wide by a module fetched on demand (internal #444, #454)"
+        run: node tests/test_fat_paths.mjs
       # Spec 0040: TRAPPIST-1 at its own scale. Kepler's third law on the seven rows, the planets the
       # exoplanet table's own records on a 100 000 km stage, each at its transit toward us, and the
       # eleven-stop "Travel to exoplanets" run end to end by the real trip machine.
@@ -445,11 +465,16 @@ jobs:
       # et al. 2014, search, the `#go=` link, and the card's lines about what is measured.
       - name: "Star systems: the generated forty obey Kepler, their zones are the paper's, the cards say what is measured"
         run: node tests/test_systems_table.mjs
+      # Internal #475: two suns for Kepler-16 and Kepler-1647, their orbit against the papers' own eclipse times.
+      - name: "Star systems: the two suns are in front at the papers' eclipse times"
+        run: node tests/test_systems_binaries.mjs
       # Internal #466 phase B: a drawn face for a planet nobody has seen. The classifier on the
       # table's own rows, the label made from the row, imagined worlds named as imagined, three
       # tiers with one draw call on a phone, no texture, no post-processing, nothing at boot.
       - name: "Planet faces: classed from the row, labelled as an artist's impression"
         run: node tests/test_exoface.mjs
+      - name: "the planet-face label: Measured only of a measured number, every planet of the table walked (internal #538)"
+        run: node tests/test_exoface_truth.mjs
       - name: Satellite positions move and reject stale orbital elements
         run: node tests/test_sgp4.mjs
       - name: The scene says so when no satellite could be read
@@ -503,6 +528,10 @@ jobs:
         run: node tests/test_dso.mjs
       - name: the Milky Way model is a model, in the right place (spec 0028 step 6)
         run: node tests/test_galaxy.mjs
+      - name: heavy builds run a step a turn; the Milky Way is built in pieces and prewarmed (internal 549)
+        run: node tests/test_spread.mjs
+      - name: the sky sphere and the 3D stars lie in one frame (internal 549, #387)
+        run: node tests/test_one_star_frame.mjs
       - name: the nebulae's photographs sit where their objects are, and nothing of them loads at boot (spec 0067)
         run: node tests/test_nebulae.mjs
       - name: every extreme object has a source and sits where its source says (spec 0028 step 7)
@@ -611,6 +640,8 @@ jobs:
       # six fetches at once, none on tier 0, on data-saver or after the latch, a failing host left alone.
       - name: a close Moon or Mars is drawn from map tiles, fetched only when the camera is near and never on a first visit
         run: node tests/test_tiles.mjs
+      - name: Shader uniform names (a tile's added uniforms do not collide with the world's)
+        run: node tests/test_shader_uniform_names.mjs
       # Spec 0066 (2026-10-03): weather on every world. A wind profile to an angular rate against the
       # papers' jets, the two-phase clock that lets a still map flow, Mars's season against NASA's
       # dates, NOAA's lightning map (a saved picture) decoded and scheduled, the one-line shader patch,
@@ -745,6 +776,8 @@ jobs:
         run: node tests/test_propagate_worker.mjs
       - name: "the constellation figures as strokes, with the stars at their corners"
         run: node tests/test_figures.mjs
+      - name: "our stars step aside inside a drawn nebula picture"
+        run: node tests/test_starholes.mjs
       - name: "the nebulae's photographs in the sky from the ground"
         run: node tests/test_groundpictures.mjs
       - name: "the HEALPix tile addressing a HiPS sky is read with"
@@ -789,6 +822,8 @@ jobs:
         run: node tests/test_render_ready.mjs
       - name: "the UI guide: spacing grid, loaded weights, numbers in the copy, one primary, no dim grey inside a wash, no stale counts (internal #375, #198)"
         run: node tests/test_guide_rails.mjs
+      - name: "Bulk 3 a: the phone's search list above the launch chip, the sky field line under it (internal #563, #565)"
+        run: node tests/test_bulk3_a.mjs
       - name: "the trips walk, the node half: every stop resolves, has its narration and a picture (spec 0044 task 3, internal #123)"
         run: node tests/test_trips_walk.mjs
       - name: "Back and Forward over shared views, a tracked object that loses its position, old comet links, the launch card's mission (public #331, #348, #367, #378)"
@@ -799,6 +834,32 @@ jobs:
         run: python3 tests/test_release_zip.py
       - name: "the stripped tree: the scanner on its hard cases, every module through it"
         run: python3 tests/test_minify.py
+      - name: "the boot timeline's budget rows, judgement and probe (internal #528)"
+        run: node tests/test_boot_timeline.mjs
+      - name: "the sky from the ground's Milky Way shader opens the 2k panorama, whose stars are baked in (internal #547; reads source text)"
+        run: node tests/test_sky_shaders_src.mjs
+      - name: "shader text in templates loses its comments and indentation, each shader checked, switched off by default (internal #553 / #531)"
+        run: python3 tests/test_strip_shaders.py
+      - name: "stored at Brotli 11: one rule in deploy.sh, verify-deploy.sh and the edge function; copies decode byte for byte (internal #514)"
+        run: node tests/test_precompress.mjs
+      - name: "the minifier a deploy runs: pinned by hash, licence headers kept, maps true, and the node tests pass against the tree it writes (internal #515)"
+        run: node tests/test_minify_real.mjs
+      - name: "the edge keeps the app between deploys and a browser still revalidates: the header, the invalidation that covers it, and the check after (internal #513)"
+        run: node tests/test_edge_cache.mjs
+      - name: "a glyph layer uploads only the attributes whose values changed, and a stand-in GPU never holds a stale one (internal #519)"
+        run: node tests/test_glyph_uploads.mjs
+      - name: "a saved catalogue published as columns decodes to the verbatim rows, and the browser falls back to the verbatim file on any doubt (internal #523)"
+        run: node tests/test_columnar.mjs
+      - name: "a publisher who forbids redistribution (ESA NEOCC) is not fetched, published, saved or zipped, and JPL's APIs are never called from a browser (internal #370)"
+        run: python3 tests/test_not_ours_to_copy.py
+      - name: "the copy checker covers the page scripts under site/js/pages/: a new one that writes words must be listed with its test (internal #556)"
+        run: python3 tests/test_check_copy_pages.py
+      - name: "a real Horizons table asked in UT and a real one asked in TDB land on the same UTC instants, and nothing is corrected twice (internal #552)"
+        run: node tests/test_horizons_time.mjs
+      - name: "the telescope field follows a planet while the sky turns, and lets go at a hand, at its setting or on request (internal #547)"
+        run: node tests/test_sky_follow.mjs
+      - name: "with nothing moving the loop draws twenty frames a second: the eleven reasons it must not, each held, and a capped frame kept from the frame latch (internal #520)"
+        run: node tests/test_idle.mjs
       - name: "the notifier: digests, showers, subscriptions and tokens"
         run: python3 tests/test_notify.py
       # Merged the same day (public #487) and, again, in no workflow: the step below is what found them.

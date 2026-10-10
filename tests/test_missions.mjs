@@ -64,7 +64,8 @@ for (const m of M.MISSIONS) {
     check(e.source === undefined || (/^https:\/\/([a-z0-9-]+\.)*nasa\.gov\//.test(e.source.url) && e.source.name.length > 3), `${where}: an event read on another page names that NASA page`);
   }
   // A landing site's events on the ground are placeable; nothing else claims to be a site.
-  for (const e of m.events) if (e.place === 'site') check(SITES.some((s) => s.id === m.record), `${m.id}.${e.id}: only a landing site is a site`);
+  for (const e of m.events) if (e.place === 'site') check(SITES.some((s) => s.id === (e.record || m.record)), `${m.id}.${e.id}: only a landing site or a pad is a site`);
+  for (const e of m.events) if (e.record) check(known.has(e.record), `${m.id}.${e.id}: its own record exists`);
 }
 check(M.findEvent('voyager-1') === null && M.findEvent('nobody.launch') === null && M.findEvent('voyager-1.nothing') === null && M.findEvent('') === null, 'a link that names no event finds none');
 check(M.eventMs({ date: '1990-02-14', precision: 'day' }) === Date.parse('1990-02-14T12:00:00Z'), 'an event known to the day sits at noon UTC');
@@ -84,7 +85,10 @@ check(M.placement(jupiter, rec('deep-voyager-1'), M.eventMs(jupiter)).kind === '
 const apollo = M.MISSIONS.find((m) => m.id === 'apollo-11');
 const landing = apollo.events.find((e) => e.id === 'landing');
 check(M.placement(landing, { id: 'apollo-11' }, M.eventMs(landing)).kind === 'site' && M.placement(landing, { id: 'apollo-11' }, M.eventMs(landing)).moves, 'the Apollo 11 landing is a place on the Moon: the clock goes to 1969');
-check(M.placement(apollo.events[0], { id: 'apollo-11' }, M.eventMs(apollo.events[0])).moves === false, 'its launch is not: the craft in flight has no path');
+const launch = apollo.events[0];
+check(launch.record === 'saturn-v-lc-39a' && M.subjectId(apollo, launch) === 'saturn-v-lc-39a' && M.subjectId(apollo, landing) === 'apollo-11', 'Apollo 11\'s launch is shown on the Saturn V\'s pad, its landing on the lander');
+check(M.placement(launch, { id: 'saturn-v-lc-39a' }, M.eventMs(launch)).kind === 'site', 'and the clock goes to that morning, the pad drawing the rocket only then (liftoffs)');
+check(SITES.find((s) => s.id === 'saturn-v-lc-39a').liftoffs.includes(launch.date), 'on a date the pad lists as a liftoff');
 const interstellar = { ...v1.events.find((e) => e.id === 'interstellar'), place: 'cruise' };
 {
   // The straight line, for a craft with no file: no row uses it today, and the rule stands.
@@ -152,6 +156,32 @@ check(!/^import .*missions/m.test(cards) && /ctx\.wantMissions\(\)/.test(cards),
 const yaml = readFileSync(join(ROOT, 'registry/missions.yaml'), 'utf8');
 check(/internal #277/.test(yaml) && /reviewed_on: 2026-/.test(yaml) && /NOTHING HERE IS FROM MEMORY/.test(yaml) && /path_at/.test(yaml), 'the registry says where a craft\'s path comes from, when its dates were read, and that none is from memory');
 check(/event\.source \|\| mission\.source/.test(readFileSync(join(JS, 'ui/missions.js'), 'utf8')), 'the card links to the page the shown event was read on');
+
+// --- `#event=` before the layers land (internal #424, #550) -------------------------------------------------
+{
+  const ev = M.MISSIONS.find((m) => m.id === 'apollo-11') && M.findEvent('apollo-11.landing') ? 'apollo-11.landing' : (() => { const m = M.MISSIONS[0]; return `${m.id}.${m.events[0].id}`; })();
+  const found = M.findEvent(ev);
+  const wantId = found.mission.subject || found.mission.record;
+  let present = false;
+  const rec = { id: null, layer: 'x', pos: { x: 0, y: 0, z: 0 }, frame: 'sun-inertial', klass: 'site', name: 'x' };
+  const noop = () => undefined;
+  const ctx = new Proxy({ recordById: (id) => (present ? { ...rec, id } : null), isLayerOn: () => true, setLayerOn: noop, select: noop, refreshCard: noop }, { get: (t, k) => (k in t ? t[k] : k === 'clock' ? new Proxy({}, { get: () => noop }) : noop) });
+  let fire = null; let unsubscribed = false;
+  const subscribe = (fn) => { fire = fn; return () => { unsubscribed = true; }; };
+  const p1 = M.openEventWhenReady(ctx, ev, { subscribe, timeoutMs: 10, later: () => 1, cancel: noop });
+  let settled = null; p1.then((v) => { settled = v; });
+  await Promise.resolve(); await Promise.resolve();
+  check(settled === null && typeof fire === 'function', 'a known event whose record has not landed waits, and is not called unknown');
+  present = true; fire();
+  check((await p1) === true && unsubscribed, 'it opens when the layer lands, and stops listening');
+  check((await M.openEventWhenReady(ctx, 'no-such.event', { subscribe })) === false, 'an event nobody knows is unknown at once');
+  present = false; let fireLate = null; let timerFn = null;
+  const p3 = M.openEventWhenReady(ctx, ev, { subscribe: (fn) => { fireLate = fn; return () => {}; }, later: (fn) => { timerFn = fn; return 7; }, cancel: noop });
+  timerFn();
+  check((await p3) === false, 'a record that never lands is unknown at the end of the wait');
+  const main = readFileSync(join(ROOT, 'site/js/main.js'), 'utf8');
+  check((main.match(/openEventWhenReady\(ctx,/g) || []).length === 2, 'both places main.js opens a link\'s event wait for the layers');
+}
 
 if (problems.length) { console.error('missions FAILED:\n  ' + problems.join('\n  ')); process.exit(1); }
 console.log(`missions ok: ${M.MISSIONS.length} missions, ${events} dated events each with a source; a site moves the clock, a flyby with no path does not; the straight line puts Voyager 1 at ${v1Out.toFixed(1)} au in August 2012 (121.6) and New Horizons at ${nhArr.toFixed(1)} at Arrokoth (43.4)`);
